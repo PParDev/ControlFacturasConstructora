@@ -1,0 +1,22 @@
+{
+  "name": "constructora",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:back": "node server/index.js",
+    "dev:front": "cd app && npm run dev",
+    "dev": "concurrently \"npm run dev:back\" \"npm run dev:front\"",
+    "db:migrate": "node server/migrate.js",
+    "db:seed": "node server/seed.js",
+    "db:reset": "rm -f server/data/constructora.db && npm run db:migrate && npm run db:seed"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.8.0",
+    "cors": "^2.8.5",
+    "express": "^4.18.3"
+  }
+}

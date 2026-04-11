@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Control de Obras — Demo React</title>
+<script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f0f0;color:#111;}
+:root{
+  --bg:#fff;--bg2:#f5f5f5;--bg3:#ebebeb;
+  --txt:#111;--txt2:#666;--bdr:#e0e0e0;
+  --blue:#185FA5;--blue-bg:#EBF2FA;--blue-txt:#185FA5;
+  --green-bg:#EBF7F2;--green-txt:#1D9E75;
+  --yellow-bg:#FDF5E6;--yellow-txt:#BA7517;
+  --red-bg:#FBECEC;--red-txt:#C0392B;
+}
+.app{display:flex;min-height:100vh;}
+.sidebar{width:190px;background:var(--bg);border-right:1px solid var(--bdr);display:flex;flex-direction:column;position:fixed;top:0;bottom:0;z-index:10;}
+.main{flex:1;margin-left:190px;padding:22px;min-height:100vh;}
+.sb-head{padding:14px 16px;border-bottom:1px solid var(--bdr);}
+.sb-logo{font-size:13px;font-weight:600;color:var(--txt);}
+.sb-sub{font-size:11px;color:var(--txt2);margin-top:2px;}
+nav{padding:8px 0;flex:1;overflow-y:auto;}
+.ni{display:flex;align-items:center;gap:9px;padding:9px 16px;font-size:13px;cursor:pointer;color:var(--txt2);border-left:2px solid transparent;transition:all .1s;}
+.ni:hover{background:var(--bg2);color:var(--txt);}
+.ni.on{background:var(--blue-bg);color:var(--blue-txt);border-left-color:var(--blue);font-weight:500;}
+.sb-foot{padding:12px 16px;border-top:1px solid var(--bdr);}
+.ptitle{font-size:17px;font-weight:600;color:var(--txt);margin-bottom:3px;}
+.psub{font-size:13px;color:var(--txt2);margin-bottom:18px;}
+.metrics{display:grid;gap:10px;margin-bottom:18px;}
+.m4{grid-template-columns:repeat(4,minmax(0,1fr));}
+.m3{grid-template-columns:repeat(3,minmax(0,1fr));}
+.metric{background:var(--bg);border:1px solid var(--bdr);border-radius:8px;padding:12px;}
+.ml{font-size:12px;color:var(--txt2);margin-bottom:4px;}
+.mv{font-size:20px;font-weight:600;color:var(--txt);}
+.ms{font-size:11px;color:var(--txt2);margin-top:2px;}
+.card{background:var(--bg);border:1px solid var(--bdr);border-radius:8px;padding:14px;margin-bottom:14px;}
+.ct{font-size:14px;font-weight:600;color:var(--txt);margin-bottom:12px;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{text-align:left;padding:7px 10px;font-size:11px;font-weight:500;color:var(--txt2);border-bottom:1px solid var(--bdr);text-transform:uppercase;letter-spacing:.04em;}
+td{padding:8px 10px;border-bottom:1px solid var(--bdr);color:var(--txt);}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:var(--bg2);}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500;}
+.bg{background:var(--green-bg);color:var(--green-txt);}
+.by{background:var(--yellow-bg);color:var(--yellow-txt);}
+.bb{background:var(--blue-bg);color:var(--blue-txt);}
+.br{background:var(--red-bg);color:var(--red-txt);}
+.bgr{background:#F0F0F0;color:#666;}
+.fg{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.fg3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+.fgrp{display:flex;flex-direction:column;gap:4px;}
+.fgrp label{font-size:12px;color:var(--txt2);}
+.fgrp input,.fgrp select{font-size:13px;padding:6px 8px;border:1px solid var(--bdr);border-radius:6px;background:var(--bg);color:var(--txt);outline:none;}
+.fgrp input:focus,.fgrp select:focus{border-color:var(--blue);}
+.btn{padding:7px 14px;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid var(--bdr);background:var(--bg);color:var(--txt);}
+.btn:hover{background:var(--bg2);}
+.btnp{background:var(--blue);color:#fff;border-color:var(--blue);}
+.btnp:hover{background:#144e8a;}
+.btnsm{padding:4px 9px;font-size:12px;}
+.alert{border-radius:6px;padding:9px 13px;font-size:13px;margin-top:10px;}
+.aw{background:var(--yellow-bg);color:var(--yellow-txt);}
+.ae{background:var(--red-bg);color:var(--red-txt);}
+.as{background:var(--green-bg);color:var(--green-txt);}
+.ai{background:var(--bg2);color:var(--txt2);}
+.flujo{display:flex;align-items:center;gap:5px;margin-bottom:16px;flex-wrap:wrap;}
+.fs{display:flex;align-items:center;gap:5px;background:var(--bg2);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--txt2);}
+.fs.done{background:var(--green-bg);color:var(--green-txt);}
+.fs.act{background:var(--blue-bg);color:var(--blue-txt);font-weight:500;}
+.fs.opt{border:1px dashed var(--bdr);background:transparent;}
+.fa{color:var(--txt2);font-size:12px;}
+.tabs{display:flex;gap:8px;margin-bottom:16px;}
+.tab{padding:6px 14px;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid var(--bdr);background:var(--bg);color:var(--txt2);}
+.tab.on{background:var(--blue);color:#fff;border-color:var(--blue);}
+.fsel{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:16px;}
+.fopt{border:1px solid var(--bdr);border-radius:8px;padding:12px;cursor:pointer;text-align:center;}
+.fopt:hover{border-color:#888;background:var(--bg2);}
+.fopt.on{border:2px solid var(--blue);background:var(--blue-bg);}
+.fot{font-size:13px;font-weight:500;margin-bottom:4px;}
+.fod{font-size:11px;color:var(--txt2);}
+.sbox{background:var(--bg2);border:1px solid var(--bdr);border-radius:8px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.obras-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.oc{background:var(--bg);border:1px solid var(--bdr);border-radius:8px;padding:13px;cursor:pointer;}
+.oc:hover{border-color:#888;}
+.bar{height:7px;border-radius:4px;background:var(--bg3);margin:4px 0 10px;overflow:hidden;}
+.barf{height:100%;border-radius:4px;}
+.sbar{display:flex;gap:8px;margin-bottom:14px;align-items:center;}
+.sbar input{flex:1;font-size:13px;padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;outline:none;}
+.sbar input:focus{border-color:var(--blue);}
+.tag{display:inline-block;padding:2px 7px;border-radius:4px;font-size:11px;background:#F0F0F0;color:#666;}
+input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useMemo } = React;
+
+// ── DATA ──────────────────────────────────────────────────────────────────────
+const OBRAS0 = [
+  {id:1,nombre:'Residencial Houston',cliente:'Familia Martínez',ubicacion:'Tepic, Nay.',inicio:'10/01/2026',cierre:'30/06/2026',status:'Activa',gasto:54200},
+  {id:2,nombre:'Tulipán 234',cliente:'Inmobiliaria Nayar',ubicacion:'Tepic, Nay.',inicio:'15/02/2026',cierre:'15/08/2026',status:'Activa',gasto:38000},
+  {id:3,nombre:'Pedregal Norte',cliente:'Constructora Pacífico',ubicacion:'Tepic, Nay.',inicio:'05/01/2026',cierre:'01/07/2026',status:'En pausa',gasto:22000},
+  {id:4,nombre:'Vista Hermosa',cliente:'Familia Ruiz',ubicacion:'Tepic, Nay.',inicio:'01/10/2025',cierre:'20/01/2026',status:'Terminada',gasto:10000},
+];
+const FACTS0 = [
+  {id:1,folio:'FAC-0889',proveedor:'El Toro',obra:'Residencial Houston',monto:12000,fecha:'15/03/2026',status:'Pagada'},
+  {id:2,folio:'FAC-0890',proveedor:'Cementos Nayar',obra:'Tulipán 234',monto:22400,fecha:'—',status:'Pendiente'},
+  {id:3,folio:'FAC-0891',proveedor:'El Toro',obra:'Pedregal Norte',monto:14100,fecha:'—',status:'Pendiente'},
+];
+const GASTOS0 = [
+  {id:1,fecha:'19/03',obra:'Houston',cat:'Material',concepto:'Varilla corrugada',monto:12000},
+  {id:2,fecha:'18/03',obra:'Tulipán',cat:'Mano de obra',concepto:'Cuadrilla semana',monto:8000},
+  {id:3,fecha:'17/03',obra:'Houston',cat:'Caja chica',concepto:'Transporte',monto:1200},
+  {id:4,fecha:'16/03',obra:'Pedregal',cat:'Material',concepto:'Blocks y arena',monto:22000},
+];
+const CHEQUES0 = [
+  {id:1,fecha:'01/04',bene:'—',cargo:0,abono:100000,saldo:100000,obra:'—'},
+  {id:2,fecha:'05/04',bene:'El Toro',cargo:5000,abono:0,saldo:95000,obra:'Houston'},
+];
+const CREDITO0 = [
+  {id:1,fecha:'10/03',bene:'Ferretería Central',cargo:8400,abono:0,saldo:8400,obra:'Houston'},
+  {id:2,fecha:'14/03',bene:'Materiales Nayar',cargo:10000,abono:0,saldo:18400,obra:'Tulipán'},
+];
+const CATALOGO0 = [
+  {id:1,codigo:'P-001',nombre:'Varilla 3/8',desc:'Varilla corrugada de 3/8"',unidad:'pieza',cat:'acero',precio:45,prov:'El Toro',status:'Activo'},
+  {id:2,codigo:'P-002',nombre:'Block 15x20',desc:'Block de concreto 15×20×40',unidad:'pieza',cat:'block',precio:8.5,prov:'Cementos Nayar',status:'Activo'},
+  {id:3,codigo:'P-003',nombre:'Arena m³',desc:'Arena gruesa para construcción',unidad:'m³',cat:'agregados',precio:280,prov:'Materiales Nayar',status:'Activo'},
+  {id:4,codigo:'P-004',nombre:'Alambrón',desc:'Alambrón recocido',unidad:'kg',cat:'acero',precio:32,prov:'El Toro',status:'Activo'},
+  {id:5,codigo:'P-005',nombre:'Cemento 50kg',desc:'Cemento Portland bolsa 50 kg',unidad:'costal',cat:'concreto',precio:185,prov:'Cementos Nayar',status:'Activo'},
+  {id:6,codigo:'P-006',nombre:'Grava m³',desc:'Grava triturada para mezcla',unidad:'m³',cat:'agregados',precio:320,prov:'Materiales Nayar',status:'Inactivo'},
+];
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+const fmt = n => '$' + Number(n).toLocaleString('es-MX');
+function Badge({s}) {
+  const cls = {
+    Activa:'badge bg',Activo:'badge bg',Pagada:'badge bg',Pagado:'badge bg',Surtida:'badge bg',
+    'En pausa':'badge by',Pendiente:'badge by',Parcial:'badge bb',Facturada:'badge bb',
+    Terminada:'badge bgr',Inactivo:'badge bgr',Cancelada:'badge br',
+  }[s] || 'badge bgr';
+  return <span className={cls}>{s}</span>;
+}
+function CatBadge({s}) {
+  const cls = {Material:'badge bb','Mano de obra':'badge bg','Caja chica':'badge by'}[s]||'badge bgr';
+  return <span className={cls}>{s}</span>;
+}
+
+// ── SIDEBAR ───────────────────────────────────────────────────────────────────
+const NAV = [
+  {id:'dashboard',icon:'▦',label:'Dashboard'},
+  {id:'obras',icon:'⌂',label:'Obras'},
+  {id:'recepcion',icon:'✓',label:'Recepción'},
+  {id:'facturas',icon:'◻',label:'Facturas'},
+  {id:'pagos',icon:'$',label:'Pagos'},
+  {id:'gastos',icon:'◈',label:'Gastos'},
+  {id:'cuentas',icon:'⬡',label:'Cuentas'},
+  {id:'catalogo',icon:'☰',label:'Catálogo'},
+  {id:'reportes',icon:'↗',label:'Reportes'},
+];
+function Sidebar({active,set}) {
+  return (
+    <div className="sidebar">
+      <div className="sb-head">
+        <div className="sb-logo">Control de Obras</div>
+        <div className="sb-sub">Sistema administrativo</div>
+      </div>
+      <nav>
+        {NAV.map(n=>(
+          <div key={n.id} className={`ni${active===n.id?' on':''}`} onClick={()=>set(n.id)}>
+            <span>{n.icon}</span>{n.label}
+          </div>
+        ))}
+      </nav>
+      <div className="sb-foot">
+        <div style={{fontSize:11,color:'var(--txt2)'}}>Usuario activo</div>
+        <div style={{fontSize:13,fontWeight:500}}>Administrador</div>
+      </div>
+    </div>
+  );
+}
+
+// ── DASHBOARD ─────────────────────────────────────────────────────────────────
+function Dashboard() {
+  const pend = FACTS0.filter(f=>f.status==='Pendiente');
+  const totPend = pend.reduce((s,f)=>s+f.monto,0);
+  const maxG = Math.max(...OBRAS0.map(o=>o.gasto));
+  const bc = ['#185FA5','#1D9E75','#BA7517','#993556'];
+  return (
+    <div>
+      <div className="ptitle">Dashboard</div>
+      <div className="psub">Resumen general del sistema</div>
+      <div className="metrics m4">
+        <div className="metric"><div className="ml">Obras activas</div><div className="mv">3</div><div className="ms">2 en ejecución</div></div>
+        <div className="metric"><div className="ml">Facturas por pagar</div><div className="mv">{fmt(totPend)}</div><div className="ms">{pend.length} facturas</div></div>
+        <div className="metric"><div className="ml">Saldo cheques</div><div className="mv">$95,000</div><div className="ms">Actualizado hoy</div></div>
+        <div className="metric"><div className="ml">Gasto del mes</div><div className="mv">$124,200</div><div className="ms">todas las obras</div></div>
+      </div>
+      <div className="two">
+        <div className="card">
+          <div className="ct">Últimos movimientos</div>
+          <table>
+            <thead><tr><th>Fecha</th><th>Concepto</th><th>Obra</th><th>Monto</th></tr></thead>
+            <tbody>
+              <tr><td>19/03</td><td>Varilla corrugada</td><td>Houston</td><td>{fmt(12400)}</td></tr>
+              <tr><td>18/03</td><td>Mano de obra</td><td>Tulipán</td><td>{fmt(8000)}</td></tr>
+              <tr><td>17/03</td><td>Caja chica</td><td>Houston</td><td>{fmt(1200)}</td></tr>
+              <tr><td>16/03</td><td>Blocks y arena</td><td>Pedregal</td><td>{fmt(22000)}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div className="card">
+          <div className="ct">Gasto por obra</div>
+          {OBRAS0.map((o,i)=>(
+            <div key={o.id}>
+              <div style={{fontSize:13,display:'flex',justifyContent:'space-between',marginBottom:3}}>
+                <span>{o.nombre}</span><span style={{fontWeight:500}}>{fmt(o.gasto)}</span>
+              </div>
+              <div className="bar"><div className="barf" style={{width:`${(o.gasto/maxG*100).toFixed(0)}%`,background:bc[i]}}></div></div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="card">
+        <div className="ct">Facturas pendientes de pago</div>
+        <table>
+          <thead><tr><th>Folio</th><th>Proveedor</th><th>Obra</th><th>Monto</th><th>Estatus</th></tr></thead>
+          <tbody>
+            {pend.map(f=>(
+              <tr key={f.id}><td>{f.folio}</td><td>{f.proveedor}</td><td>{f.obra}</td><td>{fmt(f.monto)}</td><td><Badge s={f.status}/></td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── OBRAS ─────────────────────────────────────────────────────────────────────
+function Obras() {
+  const [obras,setObras] = useState(OBRAS0);
+  const [show,setShow] = useState(false);
+  const [form,setForm] = useState({nombre:'',cliente:'',ubicacion:'',inicio:'',cierre:'',status:'Activa'});
+  const set = k => e => setForm(p=>({...p,[k]:e.target.value}));
+  const save = () => {
+    if(!form.nombre) return;
+    setObras(p=>[...p,{...form,id:Date.now(),gasto:0}]);
+    setForm({nombre:'',cliente:'',ubicacion:'',inicio:'',cierre:'',status:'Activa'});
+    setShow(false);
+  };
+  return (
+    <div>
+      <div className="ptitle">Obras / Proyectos</div>
+      <div className="psub">Catálogo de proyectos activos y terminados</div>
+      <div style={{marginBottom:14}}>
+        <button className="btn btnp" onClick={()=>setShow(!show)}>+ Nueva obra</button>
+      </div>
+      {show && (
+        <div className="card">
+          <div className="ct">Registrar nueva obra</div>
+          <div className="fg">
+            <div className="fgrp"><label>Nombre de la obra</label><input value={form.nombre} onChange={set('nombre')} placeholder="Ej. Residencial Las Palmas"/></div>
+            <div className="fgrp"><label>Cliente</label><input value={form.cliente} onChange={set('cliente')} placeholder="Nombre del cliente"/></div>
+            <div className="fgrp"><label>Ubicación</label><input value={form.ubicacion} onChange={set('ubicacion')} placeholder="Calle, colonia"/></div>
+            <div className="fgrp"><label>Estatus</label>
+              <select value={form.status} onChange={set('status')}>
+                <option>Activa</option><option>En pausa</option><option>Terminada</option>
+              </select>
+            </div>
+            <div className="fgrp"><label>Fecha inicio</label><input type="date" value={form.inicio} onChange={set('inicio')}/></div>
+            <div className="fgrp"><label>Fecha cierre estimada</label><input type="date" value={form.cierre} onChange={set('cierre')}/></div>
+          </div>
+          <div style={{marginTop:12,display:'flex',gap:8}}>
+            <button className="btn btnp" onClick={save}>Guardar obra</button>
+            <button className="btn" onClick={()=>setShow(false)}>Cancelar</button>
+          </div>
+        </div>
+      )}
+      <div className="obras-grid">
+        {obras.map(o=>(
+          <div key={o.id} className="oc">
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:4}}>
+              <div style={{fontSize:14,fontWeight:500}}>{o.nombre}</div>
+              <Badge s={o.status}/>
+            </div>
+            <div style={{fontSize:12,color:'var(--txt2)'}}>Cliente: {o.cliente}</div>
+            <div style={{fontSize:12,color:'var(--txt2)'}}>Inicio: {o.inicio}</div>
+            {o.ubicacion && <div style={{fontSize:12,color:'var(--txt2)'}}>Ubicación: {o.ubicacion}</div>}
+            <div style={{display:'flex',justifyContent:'space-between',marginTop:10,paddingTop:8,borderTop:'1px solid var(--bdr)'}}>
+              <span style={{fontSize:12,color:'var(--txt2)'}}>{o.status==='Terminada'?'Gasto total':'Gasto acumulado'}</span>
+              <span style={{fontSize:15,fontWeight:500}}>{fmt(o.gasto)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── RECEPCIÓN ─────────────────────────────────────────────────────────────────
+function Recepcion() {
+  const [flujo,setFlujo] = useState(0);
+  const [recibido,setRecibido] = useState('480');
+  const [saved,setSaved] = useState(false);
+  const pedido = 500;
+  const faltante = flujo===0 ? Math.max(0,pedido-(parseInt(recibido)||0)) : 0;
+  const iguales  = flujo===0 && recibido && faltante===0;
+
+  const flujos = [
+    {title:'Con pedido previo',desc:'Se hizo orden de compra antes'},
+    {title:'Sin pedido formal',desc:'El proveedor ya sabía qué traer'},
+    {title:'Solo factura',desc:'Llegó material y factura juntos'},
+  ];
+  const flows = [
+    [{lbl:'Pedido OC-042',done:true},{lbl:'Recepción',act:true},{lbl:'Factura'},{lbl:'Pago'}],
+    [{lbl:'Sin pedido',opt:true},{lbl:'Recepción',act:true},{lbl:'Factura'},{lbl:'Pago'}],
+    [{lbl:'Sin pedido',opt:true},{lbl:'Recepción + Factura',act:true},{lbl:'Pago'}],
+  ];
+  return (
+    <div>
+      <div className="ptitle">Recepción de material</div>
+      <div className="psub">Registra lo que llegó realmente a la obra — paso siempre obligatorio</div>
+      <div className="card">
+        <div className="ct">¿Cómo llegó este material?</div>
+        <div className="fsel">
+          {flujos.map((f,i)=>(
+            <div key={i} className={`fopt${flujo===i?' on':''}`} onClick={()=>{setFlujo(i);setSaved(false);}}>
+              <div className="fot">{f.title}</div>
+              <div className="fod">{f.desc}</div>
+            </div>
+          ))}
+        </div>
+        <div className="flujo">
+          {flows[flujo].map((s,i)=>(
+            <React.Fragment key={i}>
+              {i>0 && <span className="fa">›</span>}
+              <div className={`fs${s.done?' done':s.act?' act':s.opt?' opt':''}`}>
+                {s.done&&'✓ '}{s.act&&'● '}{s.lbl}
+              </div>
+            </React.Fragment>
+          ))}
+        </div>
+        {flujo===0 && (
+          <div className="fgrp" style={{marginBottom:10}}>
+            <label>Orden de compra relacionada</label>
+            <select>
+              <option>OC-042 — Blocks 15×20 (Cementos Nayar)</option>
+              <option>OC-041 — Varilla 3/8 (El Toro)</option>
+            </select>
+          </div>
+        )}
+        <div className="fg">
+          <div className="fgrp"><label>Obra</label>
+            <select><option>Residencial Houston</option><option>Tulipán 234</option><option>Pedregal Norte</option></select>
+          </div>
+          <div className="fgrp"><label>Proveedor</label><input placeholder="Nombre del proveedor"/></div>
+          <div className="fgrp"><label>Producto / material</label><input placeholder="Ej. Blocks 15×20"/></div>
+          <div className="fgrp">
+            <label>Cantidad recibida</label>
+            <input type="number" value={recibido} onChange={e=>{setRecibido(e.target.value);setSaved(false);}} placeholder="480"/>
+          </div>
+          <div className="fgrp"><label>Quién entregó</label><input placeholder="Chofer / proveedor"/></div>
+          <div className="fgrp"><label>Quién recibió en obra</label><input placeholder="Encargado de obra"/></div>
+        </div>
+        {flujo===0 && faltante>0 && (
+          <div className="alert ae">⚠ Pedido: {pedido} pzas — Recibido: {recibido} pzas — Faltante: {faltante} pzas. No se facturarán.</div>
+        )}
+        {iguales && (
+          <div className="alert as">✓ Cantidad recibida coincide con lo pedido.</div>
+        )}
+        {saved && <div className="alert as">✓ Recepción confirmada. Folio asignado: REC-019</div>}
+        <div style={{marginTop:10}}>
+          <button className="btn btnp" onClick={()=>setSaved(true)}>Confirmar recepción</button>
+        </div>
+      </div>
+      <div className="card">
+        <div className="ct">Recepciones recientes</div>
+        <table>
+          <thead><tr><th>Folio</th><th>Fecha</th><th>Obra</th><th>Producto</th><th>Recibido</th><th>Proveedor</th></tr></thead>
+          <tbody>
+            <tr><td>REC-018</td><td>18/03</td><td>Tulipán 234</td><td>Blocks 15×20</td><td>480 pzas</td><td>Cementos Nayar</td></tr>
+            <tr><td>REC-017</td><td>15/03</td><td>Houston</td><td>Varilla 3/8</td><td>100 pzas</td><td>El Toro</td></tr>
+            <tr><td>REC-016</td><td>12/03</td><td>Houston</td><td>Alambrón</td><td>45 kg</td><td>El Toro</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── FACTURAS ──────────────────────────────────────────────────────────────────
+function Facturas() {
+  const [monto,setMonto] = useState('');
+  const [saved,setSaved] = useState(false);
+  const max = 48000;
+  const excede = monto && parseFloat(monto) > max;
+  return (
+    <div>
+      <div className="ptitle">Facturas</div>
+      <div className="psub">Solo se registra lo que realmente se recibió</div>
+      <div className="flujo">
+        <div className="fs done">✓ Recepción confirmada</div><span className="fa">›</span>
+        <div className="fs act">● Factura</div><span className="fa">›</span>
+        <div className="fs">Pago</div>
+      </div>
+      <div className="card">
+        <div className="ct">Registrar factura</div>
+        <div className="fg">
+          <div className="fgrp"><label>No. de factura</label><input placeholder="FAC-2026-0892"/></div>
+          <div className="fgrp"><label>Proveedor</label><input placeholder="Cementos Nayar"/></div>
+          <div className="fgrp"><label>Recepción relacionada</label>
+            <select>
+              <option>REC-018 — Blocks 480 pzas (Tulipán)</option>
+              <option>REC-017 — Varilla 100 pzas (Houston)</option>
+            </select>
+          </div>
+          <div className="fgrp">
+            <label>Monto de la factura</label>
+            <input type="number" value={monto} onChange={e=>{setMonto(e.target.value);setSaved(false);}} placeholder="48,000"/>
+          </div>
+          <div className="fgrp"><label>Fecha</label><input type="date"/></div>
+          <div className="fgrp"><label>Obra</label>
+            <select><option>Tulipán 234</option><option>Residencial Houston</option></select>
+          </div>
+        </div>
+        <div className="alert aw">⚠ Monto máximo facturable: {fmt(max)} (480 pzas × $100). Si la factura excede este monto no se permite registrar.</div>
+        {excede && <div className="alert ae">✗ El monto ({fmt(parseFloat(monto))}) excede el máximo facturable. No se puede registrar.</div>}
+        {saved && <div className="alert as">✓ Factura registrada correctamente.</div>}
+        <div style={{marginTop:10}}>
+          <button className="btn btnp" disabled={!!excede} style={excede?{opacity:.5,cursor:'not-allowed'}:{}} onClick={()=>!excede&&setSaved(true)}>
+            Validar y registrar
+          </button>
+        </div>
+      </div>
+      <div className="card">
+        <div className="ct">Facturas registradas</div>
+        <table>
+          <thead><tr><th>No. Factura</th><th>Proveedor</th><th>Obra</th><th>Monto</th><th>Fecha</th><th>Estatus</th></tr></thead>
+          <tbody>
+            {FACTS0.map(f=>(
+              <tr key={f.id}><td>{f.folio}</td><td>{f.proveedor}</td><td>{f.obra}</td><td>{fmt(f.monto)}</td><td>{f.fecha}</td><td><Badge s={f.status}/></td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── PAGOS ─────────────────────────────────────────────────────────────────────
+function Pagos() {
+  const [saved,setSaved] = useState(false);
+  return (
+    <div>
+      <div className="ptitle">Pagos</div>
+      <div className="psub">Registro de pagos a proveedores</div>
+      <div className="flujo">
+        <div className="fs done">✓ Recepción</div><span className="fa">›</span>
+        <div className="fs done">✓ Factura</div><span className="fa">›</span>
+        <div className="fs act">● Pago</div>
+      </div>
+      <div className="card">
+        <div className="ct">Registrar pago</div>
+        <div className="fg">
+          <div className="fgrp"><label>Factura</label>
+            <select>
+              <option>FAC-0890 — Cementos Nayar $22,400</option>
+              <option>FAC-0891 — El Toro $14,100</option>
+            </select>
+          </div>
+          <div className="fgrp"><label>Monto pagado</label><input type="number" placeholder="22,400"/></div>
+          <div className="fgrp"><label>Forma de pago</label>
+            <select><option>Transferencia</option><option>Cheque</option><option>Efectivo</option></select>
+          </div>
+          <div className="fgrp"><label>Referencia</label><input placeholder="No. transferencia o cheque"/></div>
+          <div className="fgrp"><label>Fecha</label><input type="date"/></div>
+        </div>
+        {saved && <div className="alert as">✓ Pago registrado correctamente.</div>}
+        <div style={{marginTop:10}}>
+          <button className="btn btnp" onClick={()=>setSaved(true)}>Registrar pago</button>
+        </div>
+      </div>
+      <div className="card">
+        <div className="ct">Historial de pagos</div>
+        <table>
+          <thead><tr><th>Fecha</th><th>Factura</th><th>Proveedor</th><th>Obra</th><th>Monto</th><th>Forma</th><th>Estatus</th></tr></thead>
+          <tbody>
+            <tr><td>15/03</td><td>FAC-0889</td><td>El Toro</td><td>Houston</td><td>{fmt(12000)}</td><td>Transferencia</td><td><Badge s="Pagado"/></td></tr>
+            <tr><td>—</td><td>FAC-0890</td><td>Cementos Nayar</td><td>Tulipán</td><td>{fmt(22400)}</td><td>—</td><td><Badge s="Pendiente"/></td></tr>
+            <tr><td>—</td><td>FAC-0891</td><td>El Toro</td><td>Pedregal</td><td>{fmt(14100)}</td><td>—</td><td><Badge s="Pendiente"/></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── GASTOS ────────────────────────────────────────────────────────────────────
+function Gastos() {
+  const [gastos,setGastos] = useState(GASTOS0);
+  const [form,setForm] = useState({obra:'Residencial Houston',cat:'Material',concepto:'',monto:''});
+  const [saved,setSaved] = useState(false);
+  const set = k => e => setForm(p=>({...p,[k]:e.target.value}));
+  const save = () => {
+    if(!form.concepto||!form.monto) return;
+    const d = new Date();
+    setGastos(p=>[{id:Date.now(),fecha:`${d.getDate()}/${d.getMonth()+1}`,obra:form.obra.split(' ')[form.obra.split(' ').length-1],cat:form.cat,concepto:form.concepto,monto:parseFloat(form.monto)},...p]);
+    setForm(p=>({...p,concepto:'',monto:''}));
+    setSaved(true); setTimeout(()=>setSaved(false),3000);
+  };
+  return (
+    <div>
+      <div className="ptitle">Gastos por obra</div>
+      <div className="psub">Material, mano de obra y caja chica</div>
+      <div className="metrics m3">
+        <div className="metric"><div className="ml">Material</div><div className="mv">$74,200</div><div className="ms">~60% del gasto</div></div>
+        <div className="metric"><div className="ml">Mano de obra</div><div className="mv">$37,200</div><div className="ms">~30% del gasto</div></div>
+        <div className="metric"><div className="ml">Caja chica</div><div className="mv">$12,800</div><div className="ms">~10% del gasto</div></div>
+      </div>
+      <div className="card">
+        <div className="ct">Registrar gasto</div>
+        <div className="fg">
+          <div className="fgrp"><label>Obra</label>
+            <select value={form.obra} onChange={set('obra')}>
+              <option>Residencial Houston</option><option>Tulipán 234</option><option>Pedregal Norte</option>
+            </select>
+          </div>
+          <div className="fgrp"><label>Categoría</label>
+            <select value={form.cat} onChange={set('cat')}>
+              <option>Material</option><option>Mano de obra</option><option>Caja chica</option>
+            </select>
+          </div>
+          <div className="fgrp"><label>Concepto</label><input value={form.concepto} onChange={set('concepto')} placeholder="Ej. Pago cuadrilla"/></div>
+          <div className="fgrp"><label>Monto</label><input type="number" value={form.monto} onChange={set('monto')} placeholder="3,500"/></div>
+        </div>
+        {saved && <div className="alert as">✓ Gasto registrado.</div>}
+        <div style={{marginTop:10}}><button className="btn btnp" onClick={save}>Registrar gasto</button></div>
+      </div>
+      <div className="card">
+        <div className="ct">Últimos gastos</div>
+        <table>
+          <thead><tr><th>Fecha</th><th>Obra</th><th>Categoría</th><th>Concepto</th><th>Monto</th></tr></thead>
+          <tbody>
+            {gastos.map(g=>(
+              <tr key={g.id}><td>{g.fecha}</td><td>{g.obra}</td><td><CatBadge s={g.cat}/></td><td>{g.concepto}</td><td>{fmt(g.monto)}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── CUENTAS ───────────────────────────────────────────────────────────────────
+function Cuentas() {
+  const [tab,setTab] = useState('cheques');
+  const [cargo,setCargo] = useState('');
+  const [abono,setAbono] = useState('');
+  const [movs,setMovs] = useState(CHEQUES0);
+  const [saved,setSaved] = useState(false);
+  const saldoBase = 95000;
+  const saldoNew = saldoBase - (parseFloat(cargo)||0) + (parseFloat(abono)||0);
+  const registrar = () => {
+    if(!cargo && !abono) return;
+    const d = new Date();
+    setMovs(p=>[...p,{id:Date.now(),fecha:`${d.getDate()}/${d.getMonth()+1}`,bene:'—',cargo:parseFloat(cargo)||0,abono:parseFloat(abono)||0,saldo:saldoNew,obra:'General'}]);
+    setCargo(''); setAbono('');
+    setSaved(true); setTimeout(()=>setSaved(false),3000);
+  };
+  return (
+    <div>
+      <div className="ptitle">Cuentas bancarias</div>
+      <div className="psub">Cuenta de cheques y tarjeta de crédito</div>
+      <div className="tabs">
+        <div className={`tab${tab==='cheques'?' on':''}`} onClick={()=>setTab('cheques')}>Cuenta cheques</div>
+        <div className={`tab${tab==='credito'?' on':''}`} onClick={()=>setTab('credito')}>Tarjeta crédito</div>
+      </div>
+      {tab==='cheques' && (
+        <div>
+          <div className="sbox">
+            <div><div style={{fontSize:12,color:'var(--txt2)'}}>Saldo inicial</div><div style={{fontSize:18,fontWeight:600}}>$100,000</div></div>
+            <div style={{textAlign:'right'}}><div style={{fontSize:12,color:'var(--txt2)'}}>Saldo actual</div><div style={{fontSize:22,fontWeight:600}}>{fmt(movs[movs.length-1]?.saldo??saldoBase)}</div></div>
+          </div>
+          <div className="card">
+            <div className="ct">Registrar movimiento</div>
+            <div className="fg3">
+              <div className="fgrp"><label>Fecha</label><input type="date"/></div>
+              <div className="fgrp"><label>Beneficiario</label><input placeholder="A quién se pagó"/></div>
+              <div className="fgrp"><label>Obra</label>
+                <select><option>Houston</option><option>Tulipán</option><option>Pedregal</option><option>General</option></select>
+              </div>
+              <div className="fgrp"><label>Cargo (salida $)</label><input type="number" value={cargo} onChange={e=>setCargo(e.target.value)} placeholder="0"/></div>
+              <div className="fgrp"><label>Abono (entrada $)</label><input type="number" value={abono} onChange={e=>setAbono(e.target.value)} placeholder="0"/></div>
+              <div className="fgrp"><label>Saldo resultante</label><input readOnly value={fmt(saldoNew)} style={{fontWeight:600,background:'var(--bg2)'}}/></div>
+            </div>
+            <div className="alert ai" style={{marginTop:8}}>Fórmula: Saldo anterior − Cargo + Abono = Saldo nuevo</div>
+            {saved && <div className="alert as">✓ Movimiento registrado.</div>}
+            <div style={{marginTop:10}}><button className="btn btnp" onClick={registrar}>Registrar movimiento</button></div>
+          </div>
+          <div className="card">
+            <div className="ct">Estado de cuenta</div>
+            <table>
+              <thead><tr><th>Fecha</th><th>Beneficiario</th><th>Cargo</th><th>Abono</th><th>Saldo</th><th>Obra</th></tr></thead>
+              <tbody>
+                {movs.map(m=>(
+                  <tr key={m.id}><td>{m.fecha}</td><td>{m.bene}</td><td>{m.cargo>0?fmt(m.cargo):'—'}</td><td>{m.abono>0?fmt(m.abono):'—'}</td><td style={{fontWeight:500}}>{fmt(m.saldo)}</td><td>{m.obra}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+      {tab==='credito' && (
+        <div>
+          <div className="sbox">
+            <div><div style={{fontSize:12,color:'var(--txt2)'}}>Límite de crédito</div><div style={{fontSize:18,fontWeight:600}}>$50,000</div></div>
+            <div style={{textAlign:'right'}}><div style={{fontSize:12,color:'var(--txt2)'}}>Saldo usado</div><div style={{fontSize:22,fontWeight:600,color:'var(--yellow-txt)'}}>$18,400</div></div>
+          </div>
+          <div className="card">
+            <div className="ct">Movimientos tarjeta</div>
+            <table>
+              <thead><tr><th>Fecha</th><th>Beneficiario</th><th>Cargo</th><th>Abono</th><th>Saldo</th><th>Obra</th></tr></thead>
+              <tbody>
+                {CREDITO0.map(m=>(
+                  <tr key={m.id}><td>{m.fecha}</td><td>{m.bene}</td><td>{m.cargo>0?fmt(m.cargo):'—'}</td><td>{m.abono>0?fmt(m.abono):'—'}</td><td style={{fontWeight:500,color:'var(--yellow-txt)'}}>{fmt(m.saldo)}</td><td>{m.obra}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── CATÁLOGO ──────────────────────────────────────────────────────────────────
+function Catalogo() {
+  const [prods,setProds] = useState(CATALOGO0);
+  const [q,setQ] = useState('');
+  const [show,setShow] = useState(false);
+  const [editId,setEditId] = useState(null);
+  const empty = {codigo:'',nombre:'',desc:'',unidad:'pieza',cat:'',precio:'',prov:'',status:'Activo'};
+  const [form,setForm] = useState(empty);
+  const set = k => e => setForm(p=>({...p,[k]:e.target.value}));
+  const filtrados = useMemo(()=>prods.filter(p=>
+    p.nombre.toLowerCase().includes(q.toLowerCase())||
+    p.codigo.toLowerCase().includes(q.toLowerCase())||
+    p.cat.toLowerCase().includes(q.toLowerCase())
+  ),[prods,q]);
+  const save = () => {
+    if(!form.codigo||!form.nombre) return;
+    if(editId) { setProds(p=>p.map(x=>x.id===editId?{...form,id:editId,precio:parseFloat(form.precio)||0}:x)); setEditId(null); }
+    else setProds(p=>[...p,{...form,id:Date.now(),precio:parseFloat(form.precio)||0}]);
+    setForm(empty); setShow(false);
+  };
+  const edit = p => { setForm({...p}); setEditId(p.id); setShow(true); };
+  const toggle = id => setProds(p=>p.map(x=>x.id===id?{...x,status:x.status==='Activo'?'Inactivo':'Activo'}:x));
+  return (
+    <div>
+      <div className="ptitle">Catálogo de insumos</div>
+      <div className="psub">Productos y materiales — CRUD completo</div>
+      <div className="sbar">
+        <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar por nombre, código o categoría…"/>
+        <button className="btn btnp" onClick={()=>{setShow(!show);setEditId(null);setForm(empty);}}>+ Nuevo producto</button>
+      </div>
+      {show && (
+        <div className="card">
+          <div className="ct">{editId?'Editar producto':'Nuevo producto'}</div>
+          <div className="fg">
+            <div className="fgrp"><label>Código interno</label><input value={form.codigo} onChange={set('codigo')} placeholder="P-007"/></div>
+            <div className="fgrp"><label>Nombre del producto</label><input value={form.nombre} onChange={set('nombre')} placeholder="Cemento 50kg"/></div>
+            <div className="fgrp"><label>Descripción (opcional)</label><input value={form.desc} onChange={set('desc')} placeholder="Descripción breve"/></div>
+            <div className="fgrp"><label>Unidad de medida</label>
+              <select value={form.unidad} onChange={set('unidad')}>
+                <option>pieza</option><option>m²</option><option>m³</option><option>kg</option><option>litro</option><option>costal</option><option>metro</option><option>varilla</option>
+              </select>
+            </div>
+            <div className="fgrp"><label>Categoría</label>
+              <select value={form.cat} onChange={set('cat')}>
+                <option value="">— Seleccionar —</option>
+                <option>concreto</option><option>acero</option><option>block</option><option>madera</option><option>agregados</option><option>herramienta</option>
+              </select>
+            </div>
+            <div className="fgrp"><label>Precio unitario de referencia</label><input type="number" value={form.precio} onChange={set('precio')} placeholder="185.00"/></div>
+            <div className="fgrp"><label>Proveedor habitual</label><input value={form.prov} onChange={set('prov')} placeholder="Nombre del proveedor"/></div>
+            <div className="fgrp"><label>Estatus</label>
+              <select value={form.status} onChange={set('status')}><option>Activo</option><option>Inactivo</option></select>
+            </div>
+          </div>
+          <div style={{marginTop:12,display:'flex',gap:8}}>
+            <button className="btn btnp" onClick={save}>{editId?'Guardar cambios':'Agregar producto'}</button>
+            <button className="btn" onClick={()=>{setShow(false);setEditId(null);}}>Cancelar</button>
+          </div>
+        </div>
+      )}
+      <div className="card">
+        <div className="ct">Productos ({filtrados.length})</div>
+        <table>
+          <thead><tr><th>Código</th><th>Nombre</th><th>Unidad</th><th>Categoría</th><th>Precio ref.</th><th>Proveedor</th><th>Estatus</th><th></th></tr></thead>
+          <tbody>
+            {filtrados.map(p=>(
+              <tr key={p.id} style={{opacity:p.status==='Inactivo'?.45:1}}>
+                <td><span className="tag">{p.codigo}</span></td>
+                <td style={{fontWeight:500}}>{p.nombre}</td>
+                <td>{p.unidad}</td><td>{p.cat}</td><td>{fmt(p.precio)}</td><td>{p.prov}</td>
+                <td><Badge s={p.status}/></td>
+                <td>
+                  <div style={{display:'flex',gap:4}}>
+                    <button className="btn btnsm" onClick={()=>edit(p)}>Editar</button>
+                    <button className="btn btnsm" style={{color:p.status==='Activo'?'var(--red-txt)':'var(--green-txt)'}} onClick={()=>toggle(p.id)}>
+                      {p.status==='Activo'?'Desactivar':'Activar'}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── REPORTES ──────────────────────────────────────────────────────────────────
+function Reportes() {
+  const [obra,setObra] = useState('Residencial Houston');
+  const [tipo,setTipo] = useState('Resumen por obra');
+  const [gen,setGen] = useState(true);
+  return (
+    <div>
+      <div className="ptitle">Reportes</div>
+      <div className="psub">Consulta filtrada por obra, fecha y categoría</div>
+      <div className="card">
+        <div className="ct">Filtros</div>
+        <div className="fg">
+          <div className="fgrp"><label>Obra</label>
+            <select value={obra} onChange={e=>{setObra(e.target.value);setGen(false);}}>
+              <option>Todas</option><option>Residencial Houston</option><option>Tulipán 234</option><option>Pedregal Norte</option>
+            </select>
+          </div>
+          <div className="fgrp"><label>Tipo de reporte</label>
+            <select value={tipo} onChange={e=>{setTipo(e.target.value);setGen(false);}}>
+              <option>Resumen por obra</option><option>Facturas pendientes</option><option>Recibido vs Facturado</option><option>Gastos por fecha</option><option>Estado de cuenta bancaria</option>
+            </select>
+          </div>
+          <div className="fgrp"><label>Fecha inicio</label><input type="date"/></div>
+          <div className="fgrp"><label>Fecha fin</label><input type="date"/></div>
+        </div>
+        <div style={{marginTop:10}}><button className="btn btnp" onClick={()=>setGen(true)}>Generar reporte</button></div>
+      </div>
+      {gen && tipo==='Resumen por obra' && (
+        <>
+          <div className="card">
+            <div className="ct">Resumen — {obra}</div>
+            <div className="metrics m4" style={{marginBottom:0}}>
+              <div className="metric"><div className="ml">Material</div><div className="mv">$32,000</div></div>
+              <div className="metric"><div className="ml">Mano de obra</div><div className="mv">$16,200</div></div>
+              <div className="metric"><div className="ml">Caja chica</div><div className="mv">$6,000</div></div>
+              <div className="metric"><div className="ml">Total</div><div className="mv" style={{color:'var(--blue)'}}>$54,200</div></div>
+            </div>
+          </div>
+          <div className="card">
+            <div className="ct">Detalle de gastos — {obra}</div>
+            <table>
+              <thead><tr><th>Fecha</th><th>Categoría</th><th>Concepto</th><th>Monto</th></tr></thead>
+              <tbody>
+                <tr><td>19/03</td><td><CatBadge s="Material"/></td><td>Varilla corrugada</td><td>$12,000</td></tr>
+                <tr><td>15/03</td><td><CatBadge s="Mano de obra"/></td><td>Cuadrilla semana</td><td>$8,000</td></tr>
+                <tr><td>10/03</td><td><CatBadge s="Material"/></td><td>Blocks y varilla</td><td>$20,000</td></tr>
+                <tr><td>05/03</td><td><CatBadge s="Caja chica"/></td><td>Combustible</td><td>$1,200</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+      {gen && tipo==='Recibido vs Facturado' && (
+        <div className="card">
+          <div className="ct">Recibido vs Facturado — {obra}</div>
+          <table>
+            <thead><tr><th>Producto</th><th>Recibido</th><th>Facturado</th><th>Diferencia</th><th>Estado</th></tr></thead>
+            <tbody>
+              <tr><td>Varilla 3/8</td><td>100 pzas</td><td>100 pzas</td><td>—</td><td><Badge s="Activa"/></td></tr>
+              <tr><td>Alambrón</td><td>45 kg</td><td>45 kg</td><td>—</td><td><span className="badge bg">Correcto</span></td></tr>
+              <tr><td>Blocks 15×20</td><td>480 pzas</td><td>480 pzas</td><td style={{color:'var(--green-txt)'}}>20 no facturadas</td><td><span className="badge bg">Ajustado</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+      {gen && tipo==='Facturas pendientes' && (
+        <div className="card">
+          <div className="ct">Facturas pendientes</div>
+          <table>
+            <thead><tr><th>Folio</th><th>Proveedor</th><th>Obra</th><th>Monto</th><th>Estatus</th></tr></thead>
+            <tbody>
+              {FACTS0.filter(f=>f.status==='Pendiente').map(f=>(
+                <tr key={f.id}><td>{f.folio}</td><td>{f.proveedor}</td><td>{f.obra}</td><td>{fmt(f.monto)}</td><td><Badge s={f.status}/></td></tr>
+              ))}
+              <tr style={{fontWeight:600}}>
+                <td colSpan={3} style={{paddingTop:10}}>Total pendiente</td>
+                <td style={{paddingTop:10}}>{fmt(FACTS0.filter(f=>f.status==='Pendiente').reduce((s,f)=>s+f.monto,0))}</td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+      {gen && tipo==='Estado de cuenta bancaria' && (
+        <div className="card">
+          <div className="ct">Estado de cuenta — Cuenta cheques</div>
+          <table>
+            <thead><tr><th>Fecha</th><th>Beneficiario</th><th>Cargo</th><th>Abono</th><th>Saldo</th><th>Obra</th></tr></thead>
+            <tbody>
+              {CHEQUES0.map(m=>(
+                <tr key={m.id}><td>{m.fecha}</td><td>{m.bene}</td><td>{m.cargo>0?fmt(m.cargo):'—'}</td><td>{m.abono>0?fmt(m.abono):'—'}</td><td style={{fontWeight:500}}>{fmt(m.saldo)}</td><td>{m.obra}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── APP ───────────────────────────────────────────────────────────────────────
+const PAGES = {dashboard:Dashboard,obras:Obras,recepcion:Recepcion,facturas:Facturas,pagos:Pagos,gastos:Gastos,cuentas:Cuentas,catalogo:Catalogo,reportes:Reportes};
+function App() {
+  const [active,setActive] = useState('dashboard');
+  const Page = PAGES[active];
+  return (
+    <div className="app">
+      <Sidebar active={active} set={setActive}/>
+      <div className="main"><Page/></div>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+}
+
+@layer components {
+  /* ── Layout ─────────────────────────────────────── */
+  .page-title  { @apply text-lg font-semibold text-gray-900 mb-0.5; }
+  .page-sub    { @apply text-sm text-gray-500 mb-5; }
+
+  /* ── Card ────────────────────────────────────────── */
+  .card        { @apply bg-white border border-gray-200 rounded-lg p-4 mb-4; }
+  .card-title  { @apply text-sm font-semibold text-gray-900 mb-3; }
+
+  /* ── Metric card ─────────────────────────────────── */
+  .metric-card  { @apply bg-white border border-gray-200 rounded-lg p-3; }
+  .metric-label { @apply text-xs text-gray-500 mb-1; }
+  .metric-value { @apply text-xl font-semibold text-gray-900; }
+  .metric-sub   { @apply text-xs text-gray-500 mt-0.5; }
+
+  /* ── Form fields ─────────────────────────────────── */
+  .field { @apply flex flex-col gap-1; }
+  .field > label { @apply text-xs text-gray-500; }
+  .field > input,
+  .field > select {
+    @apply text-sm px-2 py-[6px] border border-gray-200 rounded-md bg-white
+           text-gray-900 outline-none focus:border-primary transition-colors;
+  }
+  .field > input[readonly] { @apply bg-gray-50; }
+
+  /* ── Buttons ─────────────────────────────────────── */
+  .btn {
+    @apply px-3.5 py-[7px] rounded-md text-sm cursor-pointer border
+           border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition-colors;
+  }
+  .btn-primary { @apply bg-primary border-primary text-white hover:bg-primary-dark; }
+  .btn-sm      { @apply px-2.5 py-1 text-xs; }
+
+  /* ── Nav items ───────────────────────────────────── */
+  .nav-item {
+    @apply flex items-center gap-2.5 px-4 py-2.5 text-sm cursor-pointer
+           text-gray-500 border-l-2 border-transparent
+           hover:bg-gray-50 hover:text-gray-900 transition-colors;
+  }
+  .nav-item-active { @apply bg-primary-light text-primary border-l-primary font-medium; }
+
+  /* ── Badges ──────────────────────────────────────── */
+  .badge        { @apply inline-block px-2 py-0.5 rounded-full text-[11px] font-medium; }
+  .badge-green  { @apply bg-success-light text-success; }
+  .badge-yellow { @apply bg-warning-light text-warning; }
+  .badge-blue   { @apply bg-primary-light text-primary; }
+  .badge-red    { @apply bg-danger-light text-danger; }
+  .badge-gray   { @apply bg-gray-100 text-gray-500; }
+
+  /* ── Alerts ──────────────────────────────────────── */
+  .alert         { @apply rounded-md px-3 py-2.5 text-sm mt-2.5; }
+  .alert-warn    { @apply bg-warning-light text-warning; }
+  .alert-error   { @apply bg-danger-light text-danger; }
+  .alert-success { @apply bg-success-light text-success; }
+  .alert-info    { @apply bg-gray-100 text-gray-500; }
+
+  /* ── Flow steps ──────────────────────────────────── */
+  .flow-step          { @apply flex items-center gap-1 bg-gray-100 rounded-md px-2.5 py-1 text-xs text-gray-500; }
+  .flow-step-done     { @apply bg-success-light text-success; }
+  .flow-step-active   { @apply bg-primary-light text-primary font-medium; }
+  .flow-step-optional { @apply border border-dashed border-gray-300 bg-transparent text-gray-400; }
+
+  /* ── Flow type selector ──────────────────────────── */
+  .flow-option     { @apply border border-gray-200 rounded-lg p-3 cursor-pointer text-center hover:border-gray-400 hover:bg-gray-50 transition-colors; }
+  .flow-option-sel { @apply border-2 border-primary bg-primary-light; }
+
+  /* ── Tabs ────────────────────────────────────────── */
+  .tab        { @apply px-3.5 py-[7px] rounded-md text-sm cursor-pointer border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 transition-colors; }
+  .tab-active { @apply bg-primary border-primary text-white hover:bg-primary-dark; }
+
+  /* ── Balance box ─────────────────────────────────── */
+  .saldo-box { @apply bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 flex justify-between items-center mb-4; }
+
+  /* ── Tables (scoped inside .card) ────────────────── */
+  .card table   { @apply w-full border-collapse text-sm; }
+  .card th {
+    @apply text-left py-2 px-2.5 text-[11px] font-medium text-gray-500
+           border-b border-gray-200 uppercase tracking-[.04em];
+  }
+  .card td      { @apply py-2 px-2.5 border-b border-gray-200 text-gray-900; }
+  .card tr:last-child td { @apply border-b-0; }
+  .card tr:hover td      { @apply bg-gray-50; }
+  .card tr.no-hover:hover td { @apply bg-white; }
+}
