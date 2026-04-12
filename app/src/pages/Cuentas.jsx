@@ -2,39 +2,25 @@ import { useState, useEffect } from 'react'
 import { Loader } from '../components/Loader'
 import { getCheques, getCredito, createCheque, createCredito, getObras } from '../lib/api'
 import { fmt, today } from '../lib/utils'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 export default function Cuentas() {
+  const queryClient = useQueryClient()
   const [tab, setTab] = useState('cheques')
-  
-  const [obras, setObras] = useState([])
-  const [loading, setLoading] = useState(true)
+
+  const { data: cheques = [], isLoading: loadCheques } = useQuery({ queryKey: ['cheques'], queryFn: getCheques })
+  const { data: credito = [], isLoading: loadCredito } = useQuery({ queryKey: ['credito'], queryFn: getCredito })
+  const { data: obras = [], isLoading: loadObras } = useQuery({ queryKey: ['obras'], queryFn: getObras })
 
   // States for Cheques
-  const [cheques, setCheques] = useState([])
   const [cForm, setCForm] = useState({ fecha: today(), beneficiario: '', cargo: '', abono: '', obra_id: '' })
   const [cSaved, setCSaved] = useState(false)
   
   // States for Credito
-  const [credito, setCredito] = useState([])
   const [tForm, setTForm] = useState({ fecha: today(), beneficiario: '', cargo: '', abono: '', obra_id: '' })
   const [tSaved, setTSaved] = useState(false)
 
-  useEffect(() => {
-    load()
-  }, [])
-
-  const load = async () => {
-    try {
-      const [_ch, _cr, _obs] = await Promise.all([getCheques(), getCredito(), getObras()])
-      setCheques(_ch)
-      setCredito(_cr)
-      setObras(_obs)
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const isLoading = loadCheques || loadCredito || loadObras
 
   // Calcs for Cheques
   const cSaldoAnterior = cheques.length > 0 ? cheques[cheques.length - 1].saldo : 0
@@ -49,51 +35,53 @@ export default function Cuentas() {
   const tAbonoVal = parseFloat(tForm.abono) || 0
   const tSaldoNuevo = tSaldoAnterior + tCargoVal - tAbonoVal
 
-  const registrarCheque = async () => {
-    if (!cForm.fecha || !cForm.beneficiario) return alert("Fecha y Beneficiario son requeridos")
-    if (cCargoVal === 0 && cAbonoVal === 0) return alert("Se requiere Cargo o Abono")
-    
-    setLoading(true)
-    try {
-      await createCheque({
-        ...cForm,
-        cargo: cCargoVal,
-        abono: cAbonoVal,
-        obra_id: cForm.obra_id || null
-      })
-      await load()
+  const mutCheque = useMutation({
+    mutationFn: createCheque,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cheques'] })
       setCForm({ fecha: today(), beneficiario: '', cargo: '', abono: '', obra_id: '' })
       setCSaved(true)
       setTimeout(() => setCSaved(false), 3000)
-    } catch (err) {
-      console.error(err)
-      setLoading(false)
-    }
-  }
+    },
+    onError: (err) => console.error(err)
+  })
 
-  const registrarCredito = async () => {
-    if (!tForm.fecha || !tForm.beneficiario) return alert("Fecha y Beneficiario son requeridos")
-    if (tCargoVal === 0 && tAbonoVal === 0) return alert("Se requiere Cargo o Abono")
-    
-    setLoading(true)
-    try {
-      await createCredito({
-        ...tForm,
-        cargo: tCargoVal,
-        abono: tAbonoVal,
-        obra_id: tForm.obra_id || null
-      })
-      await load()
+  const mutCredito = useMutation({
+    mutationFn: createCredito,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['credito'] })
       setTForm({ fecha: today(), beneficiario: '', cargo: '', abono: '', obra_id: '' })
       setTSaved(true)
       setTimeout(() => setTSaved(false), 3000)
-    } catch (err) {
-      console.error(err)
-      setLoading(false)
-    }
+    },
+    onError: (err) => console.error(err)
+  })
+
+  const registrarCheque = () => {
+    if (!cForm.fecha || !cForm.beneficiario) return alert("Fecha y Beneficiario son requeridos")
+    if (cCargoVal === 0 && cAbonoVal === 0) return alert("Se requiere Cargo o Abono")
+    
+    mutCheque.mutate({
+      ...cForm,
+      cargo: cCargoVal,
+      abono: cAbonoVal,
+      obra_id: cForm.obra_id || null
+    })
   }
 
-  if (loading && cheques.length === 0 && credito.length === 0) {
+  const registrarCredito = () => {
+    if (!tForm.fecha || !tForm.beneficiario) return alert("Fecha y Beneficiario son requeridos")
+    if (tCargoVal === 0 && tAbonoVal === 0) return alert("Se requiere Cargo o Abono")
+    
+    mutCredito.mutate({
+      ...tForm,
+      cargo: tCargoVal,
+      abono: tAbonoVal,
+      obra_id: tForm.obra_id || null
+    })
+  }
+
+  if (isLoading && cheques.length === 0 && credito.length === 0) {
     return (
       <div>
         <div className="page-title">Cuentas bancarias</div>
@@ -169,7 +157,9 @@ export default function Cuentas() {
             </div>
             {cSaved && <div className="alert alert-success mt-3">✓ Movimiento registrado.</div>}
             <div className="mt-3">
-              <button className="btn btn-primary" onClick={registrarCheque} disabled={loading}>Registrar movimiento</button>
+              <button className="btn btn-primary" onClick={registrarCheque} disabled={mutCheque.isPending}>
+                {mutCheque.isPending ? 'Registrando...' : 'Registrar movimiento'}
+              </button>
             </div>
           </div>
 
@@ -194,7 +184,7 @@ export default function Cuentas() {
                       <td>{m.obra_nombre || 'General'}</td>
                     </tr>
                   ))}
-                  {cheques.length === 0 && (
+                  {cheques.length === 0 && !loadCheques && (
                     <tr><td colSpan="7" className="text-center text-gray-400">Sin movimientos</td></tr>
                   )}
                 </tbody>
@@ -254,7 +244,9 @@ export default function Cuentas() {
             </div>
             {tSaved && <div className="alert alert-success mt-3">✓ Movimiento registrado.</div>}
             <div className="mt-3">
-              <button className="btn btn-primary" onClick={registrarCredito} disabled={loading}>Registrar en Tarjeta</button>
+              <button className="btn btn-primary" onClick={registrarCredito} disabled={mutCredito.isPending}>
+                {mutCredito.isPending ? 'Registrando...' : 'Registrar en Tarjeta'}
+              </button>
             </div>
           </div>
 
@@ -279,7 +271,7 @@ export default function Cuentas() {
                       <td>{m.obra_nombre || 'General'}</td>
                     </tr>
                   ))}
-                  {credito.length === 0 && (
+                  {credito.length === 0 && !loadCredito && (
                     <tr><td colSpan="7" className="text-center text-gray-400">Sin movimientos</td></tr>
                   )}
                 </tbody>

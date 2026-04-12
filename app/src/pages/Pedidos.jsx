@@ -3,6 +3,7 @@ import { FlowIndicator } from '../components/FlowIndicator'
 import { getPedidos, createPedido, getObras } from '../lib/api'
 import { Loader } from '../components/Loader'
 import { today } from '../lib/utils'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 const FLOW = [
   { label: 'Pedido',    active: true, optional: true },
@@ -14,53 +15,46 @@ const FLOW = [
 const EMPTY = { obra_id: '', proveedor: '', producto: '', cantidad: '', fecha: today(), notas: '' }
 
 export default function Pedidos() {
-  const [pedidos, setPedidos] = useState([])
-  const [obras, setObras]     = useState([])
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
+  
+  const { data: pedidos = [], isLoading: isLoadingPedidos } = useQuery({ queryKey: ['pedidos'], queryFn: getPedidos })
+  const { data: obras = [], isLoading: isLoadingObras } = useQuery({ queryKey: ['obras'], queryFn: getObras })
+
   const [form, setForm]       = useState(EMPTY)
   const [saved, setSaved]     = useState(false)
   const [lastFolio, setLastFolio] = useState('')
 
+  const isLoading = isLoadingPedidos || isLoadingObras
+
   useEffect(() => {
-    load()
-  }, [])
-
-  const load = async () => {
-    try {
-      const [_pedidos, _obras] = await Promise.all([getPedidos(), getObras()])
-      setPedidos(_pedidos)
-      setObras(_obras)
-      if (_obras.length > 0 && !form.obra_id) {
-        setForm(f => ({ ...f, obra_id: _obras[0].id }))
-      }
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(false)
+    if (obras.length > 0 && !form.obra_id) {
+      setForm(f => ({ ...f, obra_id: obras[0].id }))
     }
-  }
+  }, [obras, form.obra_id])
 
-  const set  = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
-  
-  const save = async () => {
-    if (!form.proveedor || !form.producto || !form.cantidad || !form.obra_id) return
-    
-    setLoading(true)
-    try {
-      const payload = { ...form, cantidad: parseFloat(form.cantidad) }
-      const res = await createPedido(payload)
-      await load()
+  const mutation = useMutation({
+    mutationFn: createPedido,
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['pedidos'] })
       setLastFolio(res.folio)
       setForm(p => ({ ...p, producto: '', cantidad: '', notas: '' }))
       setSaved(true)
       setTimeout(() => setSaved(false), 4000)
-    } catch (err) {
+    },
+    onError: (err) => {
       console.error(err)
-      setLoading(false)
     }
+  })
+
+  const set  = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
+  
+  const save = () => {
+    if (!form.proveedor || !form.producto || !form.cantidad || !form.obra_id) return
+    const payload = { ...form, cantidad: parseFloat(form.cantidad) }
+    mutation.mutate(payload)
   }
 
-  if (loading && pedidos.length === 0) {
+  if (isLoading && pedidos.length === 0) {
     return (
       <div>
         <div className="page-title">Pedidos / Órdenes de Compra</div>
@@ -85,7 +79,7 @@ export default function Pedidos() {
       <div className="card">
         <div className="card-title">Crear Nuevo Pedido</div>
         
-        {obras.length === 0 && (
+        {obras.length === 0 && !isLoadingObras && (
           <div className="alert alert-info mb-3">Primero debe registrar una Obra para asignarle el pedido.</div>
         )}
 
@@ -127,8 +121,8 @@ export default function Pedidos() {
         )}
 
         <div className="mt-4">
-          <button className="btn btn-primary" onClick={save} disabled={loading || obras.length === 0}>
-            {loading ? 'Generando...' : 'Generar Orden de Compra'}
+          <button className="btn btn-primary" onClick={save} disabled={mutation.isPending || obras.length === 0}>
+            {mutation.isPending ? 'Generando...' : 'Generar Orden de Compra'}
           </button>
         </div>
       </div>
@@ -161,7 +155,7 @@ export default function Pedidos() {
                   </td>
                 </tr>
               ))}
-              {pedidos.length === 0 && (
+              {pedidos.length === 0 && !isLoadingPedidos && (
                 <tr><td colSpan="7" className="text-center text-gray-400">No hay pedidos registrados</td></tr>
               )}
             </tbody>

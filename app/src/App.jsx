@@ -1,4 +1,5 @@
-import { useState } from 'react'
+// import { useState } from 'react'
+import { Routes, Route, Navigate } from 'react-router-dom' 
 import { Sidebar } from './components/Sidebar'
 import Dashboard from './pages/Dashboard'
 import Obras from './pages/Obras'
@@ -11,27 +12,27 @@ import Cuentas from './pages/Cuentas'
 import Catalogo from './pages/Catalogo'
 import Reportes from './pages/Reportes'
 
-const PAGES = {
-  dashboard: Dashboard,
-  obras: Obras,
-  pedidos: Pedidos,
-  recepcion: Recepcion,
-  facturas: Facturas,
-  pagos: Pagos,
-  gastos: Gastos,
-  cuentas: Cuentas,
-  catalogo: Catalogo,
-  reportes: Reportes,
-}
 
 export default function App() {
-  const [active, setActive] = useState('dashboard')
-  const Page = PAGES[active]
   return (
     <div className="flex min-h-screen bg-gray-100">
-      <Sidebar active={active} setActive={setActive} />
+      <Sidebar/>
       <main className="ml-[190px] flex-1 p-6 min-h-screen">
-        <Page />
+        <Routes>
+          <Route path="/" element={<Navigate to="/dashboard" replace/>} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/obras" element={<Obras />} />
+          <Route path="/pedidos" element={<Pedidos />} />
+          <Route path="/recepcion" element={<Recepcion />} />
+          <Route path="/facturas" element={<Facturas />} />
+          <Route path="/pagos" element={<Pagos />} />
+          <Route path="/gastos" element={<Gastos />} />
+          <Route path="/cuentas" element={<Cuentas />} />
+          <Route path="/catalogo" element={<Catalogo />} />
+          <Route path="/reportes" element={<Reportes />} />
+
+          <Route path="*" element={<div className='p-4'>Pagina no encontrada</div>}/>
+        </Routes>
       </main>
     </div>
   )

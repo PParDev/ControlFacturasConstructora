@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { FlowIndicator } from '../components/FlowIndicator'
 import { getRecepciones, createRecepcion, getObras, getPedidos } from '../lib/api'
 import { Loader } from '../components/Loader'
-import { fmt, today } from '../lib/utils'
+import { today } from '../lib/utils'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 const FLUJOS = [
   { title: 'Con pedido previo',  desc: 'Se hizo orden de compra antes'     },
@@ -33,43 +34,49 @@ const FLOWS = [
 const EMPTY = { obra_id: '', proveedor: '', producto: '', cantidad_recibida: '', entregado_por: '', recibido_por: '', pedido_id: '', fecha: today() }
 
 export default function Recepcion() {
-  const [flujo,       setFlujo]       = useState(0)
-  const [recepciones, setRecepciones] = useState([])
-  const [obras,       setObras]       = useState([])
-  const [pedidos,     setPedidos]     = useState([])
-  
-  const [loading, setLoading] = useState(true)
-  const [form,    setForm]    = useState(EMPTY)
-  const [saved,   setSaved]   = useState(false)
+  const queryClient = useQueryClient()
+
+  const { data: recepciones = [], isLoading: loadRec } = useQuery({ queryKey: ['recepciones'], queryFn: getRecepciones })
+  const { data: obras = [], isLoading: loadObras } = useQuery({ queryKey: ['obras'], queryFn: getObras })
+  const { data: allPedidos = [], isLoading: loadPeds } = useQuery({ queryKey: ['pedidos'], queryFn: getPedidos })
+
+  const [flujo, setFlujo] = useState(0)
+  const [form, setForm] = useState(EMPTY)
+  const [saved, setSaved] = useState(false)
   const [lastFolio, setLastFolio] = useState('')
 
+  const pedidos = allPedidos.filter(p => p.status !== 'Recibido')
+  const isLoading = loadRec || loadObras || loadPeds
+
   useEffect(() => {
-    load()
-  }, [])
-
-  const load = async () => {
-    try {
-      const [_rec, _obras, _pedidos] = await Promise.all([getRecepciones(), getObras(), getPedidos()])
-      setRecepciones(_rec)
-      setObras(_obras)
-      const pends = _pedidos.filter(p => p.status !== 'Recibido')
-      setPedidos(pends)
-      
-      let initForm = { ...form }
-      if (_obras.length > 0 && !form.obra_id) initForm.obra_id = _obras[0].id
-      if (pends.length > 0 && !form.pedido_id) initForm.pedido_id = pends[0].id
+    let initForm = { ...form }
+    if (obras.length > 0 && !form.obra_id) initForm.obra_id = obras[0].id
+    if (pedidos.length > 0 && !form.pedido_id) initForm.pedido_id = pedidos[0].id
+    if (initForm.obra_id !== form.obra_id || initForm.pedido_id !== form.pedido_id) {
       setForm(initForm)
-
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(false)
     }
-  }
+  }, [obras, pedidos]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const mutation = useMutation({
+    mutationFn: createRecepcion,
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['recepciones'] })
+      queryClient.invalidateQueries({ queryKey: ['pedidos'] })
+      
+      setLastFolio(res.folio)
+      const pId = form.pedido_id 
+      setForm(p => ({ ...p, producto: '', cantidad_recibida: '', pedido_id: pId }))
+      
+      setSaved(true)
+      setTimeout(() => setSaved(false), 4000)
+    },
+    onError: (err) => {
+      console.error(err)
+    }
+  })
 
   const set  = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
   
-  // If flujo===0 and linking a pedido, pre-fill some info
   const activePedido = flujo === 0 ? pedidos.find(p => p.id == form.pedido_id) : null
   const pedidoCount  = activePedido ? activePedido.cantidad : 0
   const qRecibida    = parseInt(form.cantidad_recibida) || 0
@@ -86,32 +93,17 @@ export default function Recepcion() {
     }
   }
 
-  const save = async () => {
+  const save = () => {
     if (!form.obra_id || !form.producto) return
 
-    setLoading(true)
-    try {
-      const payload = {
-        ...form,
-        cantidad_recibida: parseFloat(form.cantidad_recibida),
-        pedido_id: flujo === 0 ? form.pedido_id : null
-      }
-      const res = await createRecepcion(payload)
-      await load()
-      setLastFolio(res.folio)
-      
-      const pId = form.pedido_id // Keep just in case
-      setForm(p => ({ ...p, producto: '', cantidad_recibida: '', pedido_id: pId }))
-      
-      setSaved(true)
-      setTimeout(() => setSaved(false), 4000)
-    } catch (err) {
-      console.error(err)
-      setLoading(false)
-    }
+    mutation.mutate({
+      ...form,
+      cantidad_recibida: parseFloat(form.cantidad_recibida),
+      pedido_id: flujo === 0 ? form.pedido_id : null
+    })
   }
 
-  if (loading && recepciones.length === 0) {
+  if (isLoading && recepciones.length === 0) {
     return (
       <div>
         <div className="page-title">Entregas en obra (Recepción)</div>
@@ -157,7 +149,7 @@ export default function Recepcion() {
                 <option key={p.id} value={p.id}>{p.folio} — {p.producto} ({p.cantidad}u) / {p.proveedor}</option>
               ))}
             </select>
-            {pedidos.length === 0 && <div className="text-xs text-red-500 mt-1">No hay pedidos pendientes para enlazar.</div>}
+            {pedidos.length === 0 && !loadPeds && <div className="text-xs text-red-500 mt-1">No hay pedidos pendientes para enlazar.</div>}
           </div>
         )}
 
@@ -214,8 +206,8 @@ export default function Recepcion() {
         )}
 
         <div className="mt-3">
-          <button className="btn btn-primary" onClick={save} disabled={loading || (flujo === 0 && pedidos.length === 0)}>
-            {loading ? 'Confirmando...' : 'Confirmar recepción'}
+          <button className="btn btn-primary" onClick={save} disabled={mutation.isPending || (flujo === 0 && pedidos.length === 0)}>
+            {mutation.isPending ? 'Confirmando...' : 'Confirmar recepción'}
           </button>
         </div>
       </div>
@@ -242,7 +234,7 @@ export default function Recepcion() {
                   <td>{r.proveedor}</td>
                 </tr>
               ))}
-              {recepciones.length === 0 && (
+              {recepciones.length === 0 && !loadRec && (
                 <tr><td colSpan="6" className="text-center text-gray-400">No hay recepciones registradas</td></tr>
               )}
             </tbody>

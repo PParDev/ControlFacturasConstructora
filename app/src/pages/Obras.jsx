@@ -1,46 +1,36 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Badge } from '../components/Badge'
 import { Loader } from '../components/Loader'
 import { fmt } from '../lib/utils'
 import { getObras, createObra } from '../lib/api'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 const EMPTY = { nombre: '', cliente: '', ubicacion: '', fecha_inicio: '', fecha_cierre: '', status: 'Activa' }
 
 export default function Obras() {
-  const [obras, setObras] = useState([])
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
+  const { data: obras = [], isLoading } = useQuery({ queryKey: ['obras'], queryFn: getObras })
+
   const [show, setShow]   = useState(false)
   const [form, setForm]   = useState(EMPTY)
 
-  useEffect(() => {
-    loadObras()
-  }, [])
-
-  const loadObras = async () => {
-    try {
-      const data = await getObras()
-      setObras(data)
-    } catch (err) {
+  const mutation = useMutation({
+    mutationFn: createObra,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['obras'] })
+      setForm(EMPTY)
+      setShow(false)
+    },
+    onError: (err) => {
       console.error(err)
-    } finally {
-      setLoading(false)
     }
-  }
+  })
 
   const set  = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
   
-  const save = async () => {
+  const save = () => {
     if (!form.nombre) return
-    setLoading(true)
-    try {
-      await createObra(form)
-      await loadObras()
-      setForm(EMPTY)
-      setShow(false)
-    } catch (err) {
-      console.error(err)
-      setLoading(false)
-    }
+    mutation.mutate(form)
   }
 
   return (
@@ -88,13 +78,15 @@ export default function Obras() {
             </div>
           </div>
           <div className="flex gap-2 mt-3">
-            <button className="btn btn-primary" onClick={save}>Guardar obra</button>
-            <button className="btn" onClick={() => setShow(false)}>Cancelar</button>
+            <button className="btn btn-primary" onClick={save} disabled={mutation.isPending}>
+              {mutation.isPending ? 'Guardando...' : 'Guardar obra'}
+            </button>
+            <button className="btn" onClick={() => setShow(false)} disabled={mutation.isPending}>Cancelar</button>
           </div>
         </div>
       )}
 
-      {loading ? <Loader /> : (
+      {isLoading ? <Loader /> : (
         <div className="grid grid-cols-2 gap-3">
           {obras.map(o => (
             <div key={o.id} className="card !mb-0 cursor-pointer hover:border-gray-400 transition-colors">

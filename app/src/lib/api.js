@@ -46,5 +46,11 @@ export const createCheque = (data) => postAPI('/api/cuentas/cheques', data)
 export const getCredito = () => getAPI('/api/cuentas/credito')
 export const createCredito = (data) => postAPI('/api/cuentas/credito', data)
 
+// Catalogo
+export const getCatalogo = () => getAPI('/api/catalogo')
+export const createCatalogo = (data) => postAPI('/api/catalogo', data)
+export const updateCatalogo = (id, data) => putAPI(`/api/catalogo/${id}`, data)
+export const toggleCatalogo = (id) => patchAPI(`/api/catalogo/${id}/toggle`)
+
 // Dashboard
 export const getDashboard = () => getAPI('/api/dashboard')

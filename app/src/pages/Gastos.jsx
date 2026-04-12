@@ -3,57 +3,51 @@ import { CatBadge } from '../components/Badge'
 import { Loader } from '../components/Loader'
 import { fmt, today } from '../lib/utils'
 import { getGastos, createGasto, getObras } from '../lib/api'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 const EMPTY = { obra_id: '', cat: 'Material', concepto: '', monto: '', fecha: today() }
 
 export default function Gastos() {
-  const [gastos, setGastos] = useState([])
-  const [obras, setObras]   = useState([])
-  const [form,   setForm]   = useState(EMPTY)
-  const [saved,  setSaved]  = useState(false)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    load()
-  }, [])
-
-  const load = async () => {
-    try {
-      const [_gastos, _obras] = await Promise.all([getGastos(), getObras()])
-      setGastos(_gastos)
-      setObras(_obras)
-      if (_obras.length > 0 && !form.obra_id) {
-        setForm(f => ({ ...f, obra_id: _obras[0].id }))
-      }
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const set  = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
+  const queryClient = useQueryClient()
+  const { data: gastos = [], isLoading: isLoadingGastos } = useQuery({ queryKey: ['gastos'], queryFn: getGastos })
+  const { data: obras = [], isLoading: isLoadingObras } = useQuery({ queryKey: ['obras'], queryFn: getObras })
   
-  const save = async () => {
-    if (!form.concepto || !form.monto || !form.obra_id) return
-    
-    setLoading(true)
-    try {
-      await createGasto({
-        ...form,
-        monto: parseFloat(form.monto)
-      })
-      await load()
+  const [form, setForm] = useState(EMPTY)
+  const [saved, setSaved] = useState(false)
+
+  const isLoading = isLoadingGastos || isLoadingObras
+
+  // Pre-fill
+  useEffect(() => {
+    if (obras.length > 0 && !form.obra_id) {
+      setForm(f => ({ ...f, obra_id: obras[0].id }))
+    }
+  }, [obras, form.obra_id])
+
+  const mutation = useMutation({
+    mutationFn: createGasto,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gastos'] })
       setForm(p => ({ ...p, concepto: '', monto: '' }))
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
-    } catch (err) {
+    },
+    onError: (err) => {
       console.error(err)
-      setLoading(false)
     }
+  })
+
+  const set  = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
+  
+  const save = () => {
+    if (!form.concepto || !form.monto || !form.obra_id) return
+    mutation.mutate({
+      ...form,
+      monto: parseFloat(form.monto)
+    })
   }
 
-  if (loading && gastos.length === 0) {
+  if (isLoading && gastos.length === 0) {
     return (
       <div>
         <div className="page-title">Gastos por obra</div>
@@ -96,7 +90,7 @@ export default function Gastos() {
       <div className="card">
         <div className="card-title">Registrar gasto</div>
         
-        {obras.length === 0 && (
+        {obras.length === 0 && !isLoadingObras && (
           <div className="alert alert-info mb-3">Primero debe registrar una Obra para poder asignarle gastos.</div>
         )}
 
@@ -128,8 +122,8 @@ export default function Gastos() {
         </div>
         {saved && <div className="alert alert-success mt-3">✓ Gasto registrado exitosamente.</div>}
         <div className="mt-3">
-          <button className="btn btn-primary" onClick={save} disabled={loading || obras.length === 0}>
-            {loading ? 'Registrando...' : 'Registrar gasto'}
+          <button className="btn btn-primary" onClick={save} disabled={mutation.isPending || obras.length === 0}>
+            {mutation.isPending ? 'Registrando...' : 'Registrar gasto'}
           </button>
         </div>
       </div>
@@ -152,7 +146,7 @@ export default function Gastos() {
                   <td>{g.concepto}</td><td>{fmt(g.monto)}</td>
                 </tr>
               ))}
-              {gastos.length === 0 && (
+              {gastos.length === 0 && !isLoadingGastos && (
                 <tr><td colSpan="5" className="text-center text-gray-400">No hay gastos registrados</td></tr>
               )}
             </tbody>

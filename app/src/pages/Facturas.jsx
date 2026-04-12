@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react'
 import { Badge } from '../components/Badge'
 import { FlowIndicator } from '../components/FlowIndicator'
 import { Loader } from '../components/Loader'
-import { getFacturas, createFactura, getRecepciones, getObras } from '../lib/api'
+import { getFacturas, createFactura, getRecepciones, getObras, getCatalogo } from '../lib/api'
 import { fmt, today } from '../lib/utils'
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 
 const FLOW = [
   { label: 'Recepción', done: true   },
@@ -14,42 +15,51 @@ const FLOW = [
 const EMPTY = { folio: '', proveedor: '', recepcion_id: '', monto: '', fecha: today(), obra_id: '', status: 'Pendiente' }
 
 export default function Facturas() {
-  const [facturas, setFacturas] = useState([])
-  const [recepciones, setRecepciones] = useState([])
-  const [obras, setObras] = useState([])
-  
-  const [loading, setLoading] = useState(true)
-  const [form, setForm] = useState(EMPTY)
-  const [saved, setSaved] = useState(false)
+    
+  const{data: facturas = [], isLoadingFact} = useQuery({ queryKey: ['facturas'], queryFn: getFacturas})
+  const{data: recepciones = [], isLoadingRec} = useQuery({ queryKey: ['recepciones'], queryFn: getRecepciones})
+  const{data: obras = [], isLoadingObr} = useQuery({ queryKey: ['obras'], queryFn: getObras})
+  const{data: catalogo = [], isLoadingCat} = useQuery({ queryKey: ['catalogo'], queryFn: getCatalogo})
 
-  useEffect(() => {
-    load()
-  }, [])
+  const [form, setForm] = useState(EMPTY);
+  const [saved, setSaved] = useState(false);
 
-  const load = async () => {
-    try {
-      const [_fac, _rec, _obras] = await Promise.all([getFacturas(), getRecepciones(), getObras()])
-      setFacturas(_fac)
-      setRecepciones(_rec)
-      setObras(_obras)
-      
-      let initForm = { ...form }
-      if (_obras.length > 0 && !form.obra_id) initForm.obra_id = _obras[0].id
-      setForm(initForm)
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(false)
+  const isLoading = isLoadingFact || isLoadingRec || isLoadingObr || isLoadingCat;
+
+  const saveMutation = useMutation({
+    mutationFN: createFactura,
+    onSucces: () => {
+      queryClient.invalidateQueries({queryKey: ['facturas']})
+      setForm(p => ({...p, folio: '', monto: '' }))
+      setSaved(true)
+      setTimeout(() => setSaved(false), 4000)
+    },
+    onError: (err) => {
+      console.error("Error al guardar: ", err)
     }
+  })
+
+  if(isLoadingFact || isLoadingRec || isLoadingObr){
+    return (
+      <div className='flex itmes-center justify-center h-64'>
+        <p className='text-gary-500'>Cargando facturas...</p>
+      </div>
+    )
   }
 
   const set  = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
 
   const actRec = recepciones.find(r => r.id == form.recepcion_id)
   
-  // As a logic mock from the original UI: limit based on received
-  // In a real scenario, we'd multiply received quantity by unit price from order
-  const MAX = actRec ? (actRec.cantidad_recibida || 1) * 100 : 9999999 
+  const productoCatalogo = actRec 
+  ? catalogo.find(item => actRec.producto.toLowerCase().includes(item.nombre.toLowerCase()))
+  : null;
+
+  const precioReal = productoCatalogo ? productoCatalogo.precio_referencia : 0
+
+  const MAX = (actRec && precioReal > 0) 
+  ? actRec.cantidad_recibida * precioReal
+  : 9999999 
 
   const montoVal = parseFloat(form.monto) || 0
   const excede = actRec && montoVal > MAX
@@ -67,25 +77,18 @@ export default function Facturas() {
   const save = async () => {
     if (!form.folio || !form.proveedor || montoVal <= 0 || !form.obra_id) return
     
-    setLoading(true)
-    try {
-      const payload = {
-        ...form,
-        monto: montoVal,
-        recepcion_id: form.recepcion_id || null
-      }
-      await createFactura(payload)
-      await load()
-      setForm(p => ({ ...p, folio: '', monto: '' }))
-      setSaved(true)
-      setTimeout(() => setSaved(false), 4000)
-    } catch (err) {
-      console.error(err)
-      setLoading(false)
-    }
+    saveMutation.mutate({
+      ...form,
+      monto: montoVal,
+      recepcion_id: form.recepcion_id || null
+    })
   }
 
-  if (loading && facturas.length === 0) {
+  if (obras.length > 0 && !form.obra_id) {
+    setForm(f => ({ ...f, obra_id: obras[0].id }))
+  }
+
+  if (isLoading && facturas.length === 0) {
     return (
       <div>
         <div className="page-title">Facturas</div>
@@ -166,10 +169,10 @@ export default function Facturas() {
         <div className="mt-4">
           <button
             className="btn btn-primary"
-            disabled={excede || loading || obras.length === 0}
+            disabled={excede || isLoading || obras.length === 0}
             onClick={save}
           >
-            {loading ? 'Registrando...' : 'Validar y registrar'}
+            {isLoading ? 'Registrando...' : 'Validar y registrar'}
           </button>
         </div>
       </div>

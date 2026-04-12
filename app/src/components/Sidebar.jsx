@@ -1,34 +1,54 @@
-const NAV = [
-  { id: 'dashboard', icon: '▦', label: 'Dashboard'  },
-  { id: 'obras',     icon: '⌂', label: 'Obras'      },
-  { id: 'pedidos',   icon: '📋', label: 'Pedidos'   },
-  { id: 'recepcion', icon: '✓', label: 'Entregas'   },
-  { id: 'facturas',  icon: '◻', label: 'Facturas'   },
-  { id: 'pagos',     icon: '$', label: 'Pagos'       },
-  { id: 'gastos',    icon: '◈', label: 'Gastos'      },
-  { id: 'cuentas',   icon: '⬡', label: 'Cuentas'    },
-  { id: 'catalogo',  icon: '☰', label: 'Catálogo'   },
-  { id: 'reportes',  icon: '↗', label: 'Reportes'   },
-]
+import { NavLink } from "react-router-dom"
+import { 
+  LayoutDashboard, 
+  Building2, 
+  ShoppingCart, 
+  Box, 
+  FileText, 
+  CreditCard, 
+  Receipt, 
+  Wallet, 
+  BookOpen, 
+  BarChart3 
+} from 'lucide-react'
 
-export function Sidebar({ active, setActive }) {
+export function Sidebar() {
+  const menuItem = [
+    {id: "dashboard", label: "Dashboard", icon:LayoutDashboard, path: "/dashboard"},
+    {id: "obras", label: "Obras", icon:Building2, path: "/obras"},
+    {id: "pedidos", label: "Pedidos", icon:ShoppingCart, path: "/pedidos"},
+    {id: "recepcion", label: "Recepción", icon:Box, path: "/recepcion"},
+    {id: "facturas", label: "Facturas", icon:FileText, path: "/facturas"},
+    {id: "pagos", label: "Pagos", icon:CreditCard, path: "/pagos"},
+    {id: "gastos", label: "Gastos", icon:Receipt, path: "/gastos"},
+    {id: "cuentas", label: "Cuentas", icon:Wallet, path: "/cuentas"},
+    {id: "catalogo", label: "Catálogo", icon:BookOpen, path: "/catalogo"},
+    {id: "reportes", label: "Reportes", icon:BarChart3, path: "/reportes"},
+
+
+  ]
+
   return (
     <aside className="w-[190px] bg-white border-r border-gray-200 flex flex-col fixed top-0 bottom-0 z-10">
       <div className="px-4 py-3.5 border-b border-gray-200">
-        <div className="text-[13px] font-semibold text-gray-900">Control de Obras</div>
-        <div className="text-[11px] text-gray-500 mt-0.5">Sistema administrativo</div>
+        <div className="text-[13px] font-semibold text-gray-900">Constructora</div>
       </div>
 
-      <nav className="py-2 flex-1 overflow-y-auto">
-        {NAV.map(n => (
-          <div
-            key={n.id}
-            className={`nav-item ${active === n.id ? 'nav-item-active' : ''}`}
-            onClick={() => setActive(n.id)}
+      <nav className="flex-1 px-3 py-4 space-y-1">
+        {menuItem.map((item) => (
+          <NavLink
+          key={item.id}
+          to={item.path}
+          className={({ isActive  }) => `
+            flex items-center gap-3 px-3 py-2 rounded-lg transition-colors
+              ${isActive 
+                ? 'bg-blue-50 text-blue-600 font-medium' 
+                : 'text-gray-600 hover:bg-gray-50'}
+          `}
           >
-            <span>{n.icon}</span>
-            {n.label}
-          </div>
+            <item.icon size={20}/>
+            <span className="text-sm"> {item.label} </span>
+          </NavLink>
         ))}
       </nav>
 

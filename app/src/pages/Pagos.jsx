@@ -4,6 +4,7 @@ import { FlowIndicator } from '../components/FlowIndicator'
 import { Loader } from '../components/Loader'
 import { fmt, today } from '../lib/utils'
 import { getPagos, createPago, getFacturas, getObras } from '../lib/api'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 const FLOW = [
   { label: 'Recepción', done: true   },
@@ -14,64 +15,55 @@ const FLOW = [
 const EMPTY = { factura_id: '', monto: '', formapago: 'Transferencia', referencia: '', fecha: today() }
 
 export default function Pagos() {
-  const [pagos, setPagos] = useState([])
-  const [facturas, setFacturas] = useState([])
-  const [obras, setObras] = useState([])
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
+
+  const { data: pagos = [], isLoading: loadPagos } = useQuery({ queryKey: ['pagos'], queryFn: getPagos })
+  const { data: allFacts = [], isLoading: loadFacts } = useQuery({ queryKey: ['facturas'], queryFn: getFacturas })
+  const { data: obras = [], isLoading: loadObras } = useQuery({ queryKey: ['obras'], queryFn: getObras })
+
   const [form, setForm] = useState(EMPTY)
   const [saved, setSaved] = useState(false)
 
-  useEffect(() => {
-    load()
-  }, [])
+  const isLoading = loadPagos || loadFacts || loadObras
+  const facturas = allFacts.filter(f => f.status === 'Pendiente')
 
-  const load = async () => {
-    try {
-      const [_pagos, _facts, _obs] = await Promise.all([getPagos(), getFacturas(), getObras()])
-      setPagos(_pagos)
-      setObras(_obs)
-      
-      const pends = _facts.filter(f => f.status === 'Pendiente')
-      setFacturas(pends)
-      
-      if (pends.length > 0 && !form.factura_id) {
-        setForm(f => ({ ...f, factura_id: pends[0].id }))
-      }
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(false)
+  useEffect(() => {
+    if (facturas.length > 0 && !form.factura_id) {
+      setForm(f => ({ ...f, factura_id: facturas[0].id }))
     }
-  }
+  }, [facturas, form.factura_id])
+
+  const mutation = useMutation({
+    mutationFn: createPago,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pagos'] })
+      queryClient.invalidateQueries({ queryKey: ['facturas'] })
+      setForm(p => ({ ...p, monto: '', referencia: '' }))
+      setSaved(true)
+      setTimeout(() => setSaved(false), 4000)
+    },
+    onError: (err) => {
+      console.error(err)
+    }
+  })
 
   const set  = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
 
   const actFac = facturas.find(f => f.id == form.factura_id)
   
-  const save = async () => {
+  const save = () => {
     if (!form.factura_id || !form.monto || !form.formapago) return
     
-    setLoading(true)
-    try {
-      const payload = {
-        factura_id: parseInt(form.factura_id),
-        monto: parseFloat(form.monto),
-        forma: form.formapago,
-        referencia: form.referencia,
-        fecha: form.fecha
-      }
-      await createPago(payload)
-      await load()
-      setForm(p => ({ ...p, monto: '', referencia: '' }))
-      setSaved(true)
-      setTimeout(() => setSaved(false), 4000)
-    } catch (err) {
-      console.error(err)
-      setLoading(false)
-    }
+    mutation.mutate({
+      factura_id: parseInt(form.factura_id),
+      monto: parseFloat(form.monto),
+      forma: form.formapago,
+      referencia: form.referencia,
+      fecha: form.fecha
+    })
   }
 
-  if (loading && pagos.length === 0) {
+  if (isLoading && pagos.length === 0) {
     return (
       <div>
         <div className="page-title">Pagos</div>
@@ -92,7 +84,7 @@ export default function Pagos() {
       <div className="card">
         <div className="card-title">Registrar pago</div>
         
-        {facturas.length === 0 && (
+        {facturas.length === 0 && !loadFacts && (
           <div className="alert alert-info mb-3">No hay facturas pendientes de pago registradas.</div>
         )}
 
@@ -137,8 +129,8 @@ export default function Pagos() {
           <div className="alert alert-success mt-3">✓ Pago registrado correctamente.</div>
         )}
         <div className="mt-3">
-          <button className="btn btn-primary" onClick={save} disabled={loading || facturas.length === 0}>
-            {loading ? 'Registrando...' : 'Registrar pago'}
+          <button className="btn btn-primary" onClick={save} disabled={mutation.isPending || facturas.length === 0}>
+            {mutation.isPending ? 'Registrando...' : 'Registrar pago'}
           </button>
         </div>
       </div>
@@ -155,7 +147,6 @@ export default function Pagos() {
             </thead>
             <tbody>
               {pagos.map(p => {
-                const facInfo = p.factura_id
                 return (
                   <tr key={p.id}>
                     <td>{p.fecha}</td>
@@ -167,7 +158,7 @@ export default function Pagos() {
                   </tr>
                 )
               })}
-              {pagos.length === 0 && (
+              {pagos.length === 0 && !loadPagos && (
                 <tr><td colSpan="7" className="text-center text-gray-400">No hay pagos registrados</td></tr>
               )}
             </tbody>
