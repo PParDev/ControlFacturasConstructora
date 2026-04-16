@@ -23,23 +23,25 @@ const seed = db.transaction(() => {
     console.log('  → Obras: ya tiene datos, se omite')
   }
 
-  // ── Catálogo de productos ────────────────────────────────────
-  const catCount = db.prepare('SELECT COUNT(*) as n FROM catalogo_productos').get().n
+  // ── Catálogos por obra ───────────────────────────────────────
+  const catCount = db.prepare('SELECT COUNT(*) as n FROM catalogo_obras').get().n
   if (catCount === 0) {
     const ins = db.prepare(`
-      INSERT INTO catalogo_productos (codigo, nombre, descripcion, unidad, categoria, precio_referencia, proveedor_habitual, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO catalogo_obras (obra_id, codigo, nombre, unidad, cantidad_presupuestada, precio_referencia, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `)
-    ins.run('P-001', 'Varilla 3/8',  'Varilla corrugada de 3/8"',        'pieza',  'acero',     45,  'El Toro',          'Activo')
-    ins.run('P-002', 'Block 15×20',  'Block de concreto 15×20×40',       'pieza',  'block',     8.5, 'Cementos Nayar',   'Activo')
-    ins.run('P-003', 'Arena m³',     'Arena gruesa para construcción',   'm³',     'agregados', 280, 'Materiales Nayar', 'Activo')
-    ins.run('P-004', 'Alambrón',     'Alambrón recocido',                'kg',     'acero',     32,  'El Toro',          'Activo')
-    ins.run('P-005', 'Cemento 50kg', 'Cemento Portland bolsa 50 kg',    'costal', 'concreto',  185, 'Cementos Nayar',   'Activo')
-    ins.run('P-006', 'Grava m³',     'Grava triturada para mezcla',     'm³',     'agregados', 320, 'Materiales Nayar', 'Inactivo')
-    console.log('  → Catálogo: 6 productos insertados')
+    // Obra 1
+    ins.run(1, 'P-001', 'Varilla 3/8',  'pieza', 1000, 45, 'Activo')
+    ins.run(1, 'P-002', 'Block 15×20',  'pieza', 5000, 8.5,'Activo')
+    ins.run(1, 'P-003', 'Arena m³',     'm³',    200, 280, 'Activo')
+    // Obra 2
+    ins.run(2, 'P-001', 'Varilla 3/8',  'pieza', 500,  45, 'Activo')
+    ins.run(2, 'P-003', 'Arena m³',     'm³',    100,  280,'Activo')
+    console.log('  → Catálogo de obras: 5 productos insertados')
   } else {
-    console.log('  → Catálogo: ya tiene datos, se omite')
+    console.log('  → Catálogo de obras: ya tiene datos, se omite')
   }
+
 
   // ── Pedidos ──────────────────────────────────────────────────
   const pedCount = db.prepare('SELECT COUNT(*) as n FROM pedidos').get().n
@@ -114,32 +116,38 @@ const seed = db.transaction(() => {
     console.log('  → Gastos: ya tiene datos, se omite')
   }
 
-  // ── Cuenta Cheques ───────────────────────────────────────────
-  const chqCount = db.prepare('SELECT COUNT(*) as n FROM mov_cheques').get().n
-  if (chqCount === 0) {
+  // ── Cuentas Bancarias ─────────────────────────────────────────
+  const ctaCount = db.prepare('SELECT COUNT(*) as n FROM cuentas_bancarias').get().n
+  if (ctaCount === 0) {
     const ins = db.prepare(`
-      INSERT INTO mov_cheques (obra_id, fecha, beneficiario, cargo, abono, saldo)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO cuentas_bancarias (nombre, tipo, saldo_inicial, saldo_actual, obra_id)
+      VALUES (?, ?, ?, ?, ?)
     `)
-    ins.run(null, '2026-04-01', '—',      0,    100000, 100000)
-    ins.run(1,    '2026-04-05', 'El Toro', 5000, 0,      95000)
-    console.log('  → Cheques: 2 movimientos insertados')
+    ins.run('Banamex Fiscal', 'Fiscal', 100000, 95000, null)
+    ins.run('Tarjeta Bancomer', 'Crédito', 0, 18400, null) 
+    ins.run('Caja Chica Proyecto 1', 'Caja Chica', 5000, 3800, 1)
+    console.log('  → Cuentas Bancarias: 3 insertadas')
   } else {
-    console.log('  → Cheques: ya tiene datos, se omite')
+    console.log('  → Cuentas Bancarias: ya tiene datos, se omite')
   }
 
-  // ── Tarjeta Crédito ──────────────────────────────────────────
-  const crdCount = db.prepare('SELECT COUNT(*) as n FROM mov_credito').get().n
-  if (crdCount === 0) {
+  // ── Transacciones ─────────────────────────────────────────────
+  const transCount = db.prepare('SELECT COUNT(*) as n FROM transacciones').get().n
+  if (transCount === 0) {
     const ins = db.prepare(`
-      INSERT INTO mov_credito (obra_id, fecha, beneficiario, cargo, abono, saldo)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO transacciones (cuenta_id, fecha, tipo, monto, concepto, beneficiario, obra_id, categoria)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `)
-    ins.run(1, '2026-03-10', 'Ferretería Central', 8400,  0, 8400)
-    ins.run(2, '2026-03-14', 'Materiales Nayar',   10000, 0, 18400)
-    console.log('  → Crédito: 2 movimientos insertados')
+    // Cuenta 1 (Fiscal)
+    ins.run(1, '2026-04-05', 'Cargo', 5000, 'Materiales varilla', 'El Toro', 1, 'Materiales')
+    // Cuenta 2 (Crédito)
+    ins.run(2, '2026-03-10', 'Cargo', 8400, 'Herramientas', 'Ferretería Central', 1, 'Generales')
+    ins.run(2, '2026-03-14', 'Cargo', 10000,'Flete', 'Materiales Nayar', 2, 'Fletes')
+    // Cuenta 3 (Caja Chica 1)
+    ins.run(3, '2026-03-17', 'Cargo', 1200, 'Transporte', 'Taxis Local', 1, 'Viáticos')
+    console.log('  → Transacciones: 4 insertadas')
   } else {
-    console.log('  → Crédito: ya tiene datos, se omite')
+    console.log('  → Transacciones: ya tiene datos, se omite')
   }
 
 })

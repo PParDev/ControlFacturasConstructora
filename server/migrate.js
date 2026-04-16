@@ -21,18 +21,30 @@ db.exec(`
   );
 
   -- ───────────────────────────────────────────────────────────
-  --  CATÁLOGO DE PRODUCTOS
+  --  CATÁLOGO POR OBRA (Explosión de insumos)
   -- ───────────────────────────────────────────────────────────
-  CREATE TABLE IF NOT EXISTS catalogo_productos (
+  CREATE TABLE IF NOT EXISTS catalogo_obras (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
-    codigo           TEXT    NOT NULL UNIQUE,
+    obra_id          INTEGER NOT NULL REFERENCES obras(id) ON DELETE CASCADE,
+    codigo           TEXT    NOT NULL,
     nombre           TEXT    NOT NULL,
     descripcion      TEXT             DEFAULT '',
     unidad           TEXT    NOT NULL DEFAULT 'pza',
     categoria        TEXT             DEFAULT '',
+    cantidad_presupuestada REAL DEFAULT 0,
     precio_referencia REAL            DEFAULT 0,
-    proveedor_habitual TEXT           DEFAULT '',
     status           TEXT    NOT NULL DEFAULT 'Activo'
+  );
+
+  -- ───────────────────────────────────────────────────────────
+  --  HISTORIAL DE PRECIOS
+  -- ───────────────────────────────────────────────────────────
+  CREATE TABLE IF NOT EXISTS historial_precios (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    catalogo_obra_id INTEGER NOT NULL REFERENCES catalogo_obras(id) ON DELETE CASCADE,
+    precio           REAL    NOT NULL,
+    fecha            TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+    factura_id       INTEGER REFERENCES facturas(id) ON DELETE SET NULL
   );
 
   -- ───────────────────────────────────────────────────────────
@@ -40,7 +52,7 @@ db.exec(`
   -- ───────────────────────────────────────────────────────────
   CREATE TABLE IF NOT EXISTS pedidos (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
-    folio     TEXT    NOT NULL UNIQUE,
+    folio     TEXT    NOT NULL,
     obra_id   INTEGER NOT NULL REFERENCES obras(id),
     proveedor TEXT    NOT NULL DEFAULT '',
     producto  TEXT    NOT NULL DEFAULT '',
@@ -75,7 +87,9 @@ db.exec(`
   -- ───────────────────────────────────────────────────────────
   CREATE TABLE IF NOT EXISTS facturas (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-    folio              TEXT    NOT NULL UNIQUE,
+    folio              TEXT    NOT NULL UNIQUE,  -- Folio interno del sistema (FAC-2026-0001)
+    folio_interno      TEXT    GENERATED ALWAYS AS (folio) VIRTUAL, -- alias para compatibilidad
+    folio_proveedor    TEXT             DEFAULT '', -- Folio/no. de la factura del proveedor
     obra_id            INTEGER NOT NULL REFERENCES obras(id),
     recepcion_id       INTEGER          REFERENCES recepciones(id),
     proveedor          TEXT             DEFAULT '',
@@ -83,6 +97,18 @@ db.exec(`
     monto_max_facturable REAL           DEFAULT NULL,
     fecha              TEXT    NOT NULL DEFAULT (date('now','localtime')),
     status             TEXT    NOT NULL DEFAULT 'Pendiente'
+  );
+
+  -- ───────────────────────────────────────────────────────────
+  --  DETALLES DE FACTURA
+  -- ───────────────────────────────────────────────────────────
+  CREATE TABLE IF NOT EXISTS detalles_factura (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    factura_id       INTEGER NOT NULL REFERENCES facturas(id) ON DELETE CASCADE,
+    catalogo_obra_id INTEGER NOT NULL REFERENCES catalogo_obras(id),
+    cantidad         REAL    NOT NULL DEFAULT 0,
+    precio_unitario  REAL    NOT NULL DEFAULT 0,
+    subtotal         REAL    NOT NULL DEFAULT 0
   );
 
   -- ───────────────────────────────────────────────────────────
@@ -111,31 +137,32 @@ db.exec(`
   );
 
   -- ───────────────────────────────────────────────────────────
-  --  MOVIMIENTOS CUENTA CHEQUES
+  --  CUENTAS BANCARIAS Y CAJA CHICA
   -- ───────────────────────────────────────────────────────────
-  CREATE TABLE IF NOT EXISTS mov_cheques (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    obra_id      INTEGER REFERENCES obras(id),
-    fecha        TEXT    NOT NULL DEFAULT (date('now','localtime')),
-    beneficiario TEXT             DEFAULT '',
-    cargo        REAL    NOT NULL DEFAULT 0,
-    abono        REAL    NOT NULL DEFAULT 0,
-    saldo        REAL    NOT NULL DEFAULT 0
+  CREATE TABLE IF NOT EXISTS cuentas_bancarias (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre           TEXT    NOT NULL,
+    tipo             TEXT    NOT NULL DEFAULT 'Fiscal', -- Fiscal, Crédito, Caja Chica
+    saldo_inicial    REAL    NOT NULL DEFAULT 0,
+    saldo_actual     REAL    NOT NULL DEFAULT 0,
+    obra_id          INTEGER REFERENCES obras(id) ON DELETE SET NULL
   );
 
   -- ───────────────────────────────────────────────────────────
-  --  MOVIMIENTOS TARJETA CRÉDITO
+  --  TRANSACCIONES
   -- ───────────────────────────────────────────────────────────
-  CREATE TABLE IF NOT EXISTS mov_credito (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    obra_id      INTEGER REFERENCES obras(id),
-    fecha        TEXT    NOT NULL DEFAULT (date('now','localtime')),
-    beneficiario TEXT             DEFAULT '',
-    cargo        REAL    NOT NULL DEFAULT 0,
-    abono        REAL    NOT NULL DEFAULT 0,
-    saldo        REAL    NOT NULL DEFAULT 0
+  CREATE TABLE IF NOT EXISTS transacciones (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    cuenta_id        INTEGER NOT NULL REFERENCES cuentas_bancarias(id) ON DELETE CASCADE,
+    fecha            TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+    tipo             TEXT    NOT NULL DEFAULT 'Cargo', -- Cargo, Abono
+    monto            REAL    NOT NULL DEFAULT 0,
+    concepto         TEXT    DEFAULT '',
+    beneficiario     TEXT    DEFAULT '',
+    obra_id          INTEGER REFERENCES obras(id) ON DELETE SET NULL,
+    categoria        TEXT    DEFAULT 'General'
   );
 `)
 
-console.log('✅ Tablas creadas / verificadas correctamente.')
+console.log('Tablas creadas / verificadas correctamente.')
 process.exit(0)

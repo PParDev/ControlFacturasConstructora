@@ -11,6 +11,7 @@ import gastosRouter     from './routes/gastos.js'
 import cuentasRouter    from './routes/cuentas.js'
 import dashboardRouter  from './routes/dashboard.js'
 import reportesRouter   from './routes/reportes.js'
+import importadorRouter from './routes/importador.js'
 
 const app  = express()
 const PORT = process.env.PORT || 3001
@@ -30,6 +31,7 @@ app.use('/api/gastos',      gastosRouter)
 app.use('/api/cuentas',     cuentasRouter)
 app.use('/api/dashboard',   dashboardRouter)
 app.use('/api/reportes',    reportesRouter)
+app.use('/api/importador',  importadorRouter)
 
 // ── Health check ─────────────────────────────────────────────
 app.get('/api/ping', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }))
