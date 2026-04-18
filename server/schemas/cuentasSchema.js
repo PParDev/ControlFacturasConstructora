@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 export const cuentaBancariaSchema = z.object({
   nombre: z.string({ required_error: "El nombre es requerido" }).min(2, "Nombre muy corto"),
-  tipo: z.enum(['Fiscal', 'Crédito', 'Caja Chica']).default('Fiscal'),
+  tipo: z.enum(['Fiscal', 'Cheques', 'Crédito', 'Caja Chica']).default('Fiscal'),
   saldo_inicial: z.number().default(0),
   obra_id: z.number().int().positive().nullable().optional()
 })

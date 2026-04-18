@@ -50,6 +50,15 @@ export const toggleCatalogoStatus = (req, res) => {
   }
 }
 
+export const getCatalogoHistorial = (req, res) => {
+  try {
+    const historial = catalogoService.getCatalogoHistorial(req.params.id)
+    res.json(historial)
+  } catch (error) {
+    res.status(404).json({ error: error.message })
+  }
+}
+
 export const importarExcel = (req, res) => {
   try {
     const { obra_id } = req.body

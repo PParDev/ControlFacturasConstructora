@@ -10,58 +10,101 @@ function siguienteFolio() {
 
 export const getPedidos = (obra_id, status) => {
   let sql = `
-    SELECT p.*, o.nombre as obra_nombre
+    SELECT p.*, o.nombre as obra_nombre,
+           co.nombre as catalogo_nombre, co.unidad as catalogo_unidad,
+           co.precio_referencia as precio_estimado
     FROM pedidos p
     LEFT JOIN obras o ON o.id = p.obra_id
+    LEFT JOIN catalogo_obras co ON co.id = p.catalogo_obra_id
     WHERE 1=1
   `
   const params = []
   if (obra_id) { sql += ' AND p.obra_id = ?'; params.push(obra_id) }
   if (status)  { sql += ' AND p.status = ?';  params.push(status)  }
   sql += ' ORDER BY p.id DESC'
-
   return db.prepare(sql).all(...params)
 }
 
 export const createPedido = (datos) => {
-  const obra = db.prepare('SELECT id FROM obras WHERE id = ?').get(datos.obra_id)
-  if (!obra) throw new Error('Obra no encontrada')
+  return db.transaction(() => {
+    const obra = db.prepare('SELECT id FROM obras WHERE id = ?').get(datos.obra_id)
+    if (!obra) throw new Error('Obra no encontrada')
 
-  const folio = siguienteFolio()
-  const fechaFinal = datos.fecha || new Date().toISOString().split('T')[0]
+    // El folio se genera dentro de la transacción para evitar duplicados
+    const folio      = siguienteFolio()
+    const fechaFinal = datos.fecha || new Date().toISOString().split('T')[0]
 
-  const info = db.prepare(`
-    INSERT INTO pedidos (folio, obra_id, proveedor, producto, cantidad, unidad, notas, fecha)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(folio, datos.obra_id, datos.proveedor || '', datos.producto || '', datos.cantidad, datos.unidad || '', datos.notas || '', fechaFinal)
+    // Si hay catalogo_obra_id, tomar nombre/unidad del catálogo si no vienen en los datos
+    let producto = datos.producto || ''
+    let unidad   = datos.unidad   || ''
+    if (datos.catalogo_obra_id && (!producto || !unidad)) {
+      const cat = db.prepare('SELECT nombre, unidad FROM catalogo_obras WHERE id = ?').get(datos.catalogo_obra_id)
+      if (cat) {
+        if (!producto) producto = cat.nombre
+        if (!unidad)   unidad   = cat.unidad
+      }
+    }
 
-  return db.prepare('SELECT * FROM pedidos WHERE id = ?').get(info.lastInsertRowid)
+    const info = db.prepare(`
+      INSERT INTO pedidos (folio, obra_id, proveedor, producto, cantidad, unidad, notas, fecha, catalogo_obra_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      folio, datos.obra_id, datos.proveedor || '', producto,
+      datos.cantidad, unidad, datos.notas || '', fechaFinal,
+      datos.catalogo_obra_id || null
+    )
+
+    return db.prepare(`
+      SELECT p.*, co.nombre as catalogo_nombre, co.precio_referencia as precio_estimado
+      FROM pedidos p LEFT JOIN catalogo_obras co ON co.id = p.catalogo_obra_id
+      WHERE p.id = ?
+    `).get(info.lastInsertRowid)
+  })()
 }
 
 export const createPedidosBulk = (listaDatos) => {
   if (listaDatos.length === 0) return []
-  
+
   const obraId = listaDatos[0].obra_id
-  const obra = db.prepare('SELECT id FROM obras WHERE id = ?').get(obraId)
+  const obra   = db.prepare('SELECT id FROM obras WHERE id = ?').get(obraId)
   if (!obra) throw new Error('Obra no encontrada')
 
-  const folio = siguienteFolio()
-  
   return db.transaction(() => {
+    // Folio generado dentro de la transacción para evitar duplicados
+    const folio = siguienteFolio()
     const insert = db.prepare(`
-      INSERT INTO pedidos (folio, obra_id, proveedor, producto, cantidad, unidad, notas, fecha)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO pedidos (folio, obra_id, proveedor, producto, cantidad, unidad, notas, fecha, catalogo_obra_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
-    
+
     const ids = []
     for (const datos of listaDatos) {
       const fechaFinal = datos.fecha || new Date().toISOString().split('T')[0]
-      const info = insert.run(folio, datos.obra_id, datos.proveedor || '', datos.producto || '', datos.cantidad, datos.unidad || '', datos.notas || '', fechaFinal)
+
+      let producto = datos.producto || ''
+      let unidad   = datos.unidad   || ''
+      if (datos.catalogo_obra_id && (!producto || !unidad)) {
+        const cat = db.prepare('SELECT nombre, unidad FROM catalogo_obras WHERE id = ?').get(datos.catalogo_obra_id)
+        if (cat) {
+          if (!producto) producto = cat.nombre
+          if (!unidad)   unidad   = cat.unidad
+        }
+      }
+
+      const info = insert.run(
+        folio, datos.obra_id, datos.proveedor || '', producto,
+        datos.cantidad, unidad, datos.notas || '', fechaFinal,
+        datos.catalogo_obra_id || null
+      )
       ids.push(info.lastInsertRowid)
     }
-    
+
     const placeholders = ids.map(() => '?').join(',')
-    return db.prepare(`SELECT * FROM pedidos WHERE id IN (${placeholders})`).all(...ids)
+    return db.prepare(`
+      SELECT p.*, co.nombre as catalogo_nombre, co.precio_referencia as precio_estimado
+      FROM pedidos p LEFT JOIN catalogo_obras co ON co.id = p.catalogo_obra_id
+      WHERE p.id IN (${placeholders})
+    `).all(...ids)
   })()
 }
 

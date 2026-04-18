@@ -95,9 +95,9 @@ export const getEstadoCuenta = (cuenta_id, desde, hasta) => {
   }
 }
 
-export const getExplosionInsumos = (obra_id) => {
-  return db.prepare(`
-    SELECT 
+export const getExplosionInsumos = (obra_id, hasta) => {
+  const selectBase = `
+    SELECT
       co.id,
       co.codigo,
       co.nombre as concepto,
@@ -108,12 +108,31 @@ export const getExplosionInsumos = (obra_id) => {
       ROUND(co.cantidad_presupuestada * co.precio_referencia, 2) as presupuesto_total,
       COALESCE(SUM(df.cantidad), 0) as cant_comprada,
       COALESCE(SUM(df.subtotal), 0) as costo_real,
-      CASE 
-        WHEN COALESCE(SUM(df.cantidad), 0) > 0 
+      CASE
+        WHEN COALESCE(SUM(df.cantidad), 0) > 0
         THEN ROUND(COALESCE(SUM(df.subtotal), 0) / SUM(df.cantidad), 4)
-        ELSE 0 
+        ELSE 0
       END as precio_real_prom
     FROM catalogo_obras co
+  `
+
+  // Separar en dos queries parametrizadas para evitar interpolación directa de variables en SQL
+  if (hasta) {
+    return db.prepare(`
+      ${selectBase}
+      LEFT JOIN (
+        SELECT df2.* FROM detalles_factura df2
+        JOIN facturas f2 ON f2.id = df2.factura_id
+        WHERE f2.fecha <= ?
+      ) df ON df.catalogo_obra_id = co.id
+      WHERE co.obra_id = ?
+      GROUP BY co.id
+      ORDER BY co.codigo ASC
+    `).all(hasta, obra_id)
+  }
+
+  return db.prepare(`
+    ${selectBase}
     LEFT JOIN detalles_factura df ON df.catalogo_obra_id = co.id
     WHERE co.obra_id = ?
     GROUP BY co.id
@@ -123,15 +142,11 @@ export const getExplosionInsumos = (obra_id) => {
 
 export const getAvancesObras = () => {
   return db.prepare(`
-    SELECT 
+    SELECT
       o.id as obra_id, o.nombre,
       COALESCE(SUM(co.cantidad_presupuestada * co.precio_referencia), 0) as presupuesto_total,
-      COALESCE((
-        SELECT SUM(df2.subtotal)
-        FROM detalles_factura df2
-        JOIN catalogo_obras co2 ON co2.id = df2.catalogo_obra_id
-        WHERE co2.obra_id = o.id
-      ), 0) as gasto_real
+      COALESCE((SELECT SUM(f2.monto) FROM facturas f2 WHERE f2.obra_id = o.id), 0) as total_facturado,
+      COALESCE((SELECT SUM(g2.monto) FROM gastos g2 WHERE g2.obra_id = o.id), 0) as gastos_directos
     FROM obras o
     LEFT JOIN catalogo_obras co ON co.obra_id = o.id
     GROUP BY o.id
@@ -174,6 +189,100 @@ export const exportarExplosionExcel = (obra_id) => {
 
   const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' })
   return { buffer, obraNombre: obra.nombre }
+}
+
+export const getAvancesObrasDetallado = () => {
+  return db.prepare(`
+    SELECT
+      o.id as obra_id,
+      o.nombre,
+      o.estado,
+      COALESCE(SUM(co.cantidad_presupuestada * co.precio_referencia), 0) as presupuesto_total,
+      COALESCE((SELECT SUM(f2.monto) FROM facturas f2 WHERE f2.obra_id = o.id), 0) as total_facturado,
+      COALESCE((SELECT SUM(g2.monto) FROM gastos g2 WHERE g2.obra_id = o.id), 0) as gastos_directos,
+      COALESCE((SELECT SUM(f2.monto) FROM facturas f2 WHERE f2.obra_id = o.id AND f2.status = 'Pendiente'), 0) as pendiente_pagar
+    FROM obras o
+    LEFT JOIN catalogo_obras co ON co.obra_id = o.id
+    GROUP BY o.id
+    ORDER BY o.nombre ASC
+  `).all()
+}
+
+export const getGastosDirectosObra = (obra_id) => {
+  return db.prepare(`
+    SELECT categoria, concepto, SUM(monto) as total, COUNT(*) as cantidad
+    FROM gastos WHERE obra_id = ?
+    GROUP BY categoria, concepto
+    ORDER BY total DESC
+  `).all(obra_id)
+}
+
+export const getFlujoCaja = () => {
+  const facturasPorObra = db.prepare(`
+    SELECT f.obra_id, o.nombre as obra_nombre,
+           COUNT(*) as cantidad,
+           ROUND(SUM(f.monto), 2) as total
+    FROM facturas f
+    JOIN obras o ON o.id = f.obra_id
+    WHERE f.status = 'Pendiente'
+    GROUP BY f.obra_id
+    ORDER BY total DESC
+  `).all()
+
+  const cuentas = db.prepare(`
+    SELECT id, nombre, tipo, banco, saldo_actual
+    FROM cuentas_bancarias
+    ORDER BY tipo, nombre
+  `).all()
+
+  const total_pendiente = facturasPorObra.reduce((s, f) => s + f.total, 0)
+  const saldo_fiscal    = cuentas.filter(c => c.tipo === 'Fiscal').reduce((s, c) => s + c.saldo_actual, 0)
+  const saldo_caja      = cuentas.filter(c => c.tipo === 'Caja Chica').reduce((s, c) => s + c.saldo_actual, 0)
+  const deuda_credito   = cuentas.filter(c => c.tipo === 'Crédito').reduce((s, c) => s + Math.abs(c.saldo_actual), 0)
+
+  return {
+    facturas_por_obra: facturasPorObra,
+    total_pendiente,
+    cuentas,
+    saldo_fiscal,
+    saldo_caja,
+    deuda_credito,
+    liquidez_neta: saldo_fiscal + saldo_caja - total_pendiente
+  }
+}
+
+export const getGastoMensual = (obra_id) => {
+  let sql = `
+    SELECT
+      strftime('%Y-%m', f.fecha) as mes,
+      o.id as obra_id,
+      o.nombre as obra_nombre,
+      ROUND(SUM(df.subtotal), 2) as total_facturado
+    FROM detalles_factura df
+    JOIN facturas f ON f.id = df.factura_id
+    JOIN obras o ON o.id = f.obra_id
+  `
+  const params = []
+  if (obra_id) { sql += ' WHERE o.id = ?'; params.push(obra_id) }
+  sql += ' GROUP BY mes, o.id ORDER BY mes ASC, o.nombre ASC'
+  return db.prepare(sql).all(...params)
+}
+
+export const getRankingProveedores = (obra_id) => {
+  let sql = `
+    SELECT
+      f.proveedor,
+      COUNT(DISTINCT f.id) as num_facturas,
+      COUNT(DISTINCT f.obra_id) as num_obras,
+      ROUND(SUM(f.monto), 2) as total_facturado,
+      ROUND(SUM(CASE WHEN f.status = 'Pagada'    THEN f.monto ELSE 0 END), 2) as total_pagado,
+      ROUND(SUM(CASE WHEN f.status = 'Pendiente' THEN f.monto ELSE 0 END), 2) as total_pendiente
+    FROM facturas f
+  `
+  const params = []
+  if (obra_id) { sql += ' WHERE f.obra_id = ?'; params.push(obra_id) }
+  sql += ' GROUP BY f.proveedor ORDER BY total_facturado DESC'
+  return db.prepare(sql).all(...params)
 }
 
 export const getHistorialVariaciones = (obra_id) => {

@@ -4,21 +4,33 @@ import { Loader } from '../components/Loader'
 import { fmt } from '../lib/utils'
 import { importarCatalogo, getObras, createObra, updateObra, deleteObra } from '../lib/api'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 
 const EMPTY = { nombre: '', cliente: '', ubicacion: '', fecha_inicio: '', fecha_cierre: '', status: 'Activa' }
 
 export default function Obras() {
   const queryClient = useQueryClient()
+  const navigate    = useNavigate()
   const { data: obras = [], isLoading } = useQuery({ queryKey: ['obras'], queryFn: getObras })
 
-  const [show, setShow]   = useState(false)
-  const [form, setForm]   = useState(EMPTY)
-  const [isEditing, setIsEditing] = useState(false)
+  const [show,         setShow]         = useState(false)
+  const [form,         setForm]         = useState(EMPTY)
+  const [isEditing,    setIsEditing]    = useState(false)
+  const [showArchived, setShowArchived] = useState(false)
 
   const mutCreate = useMutation({
     mutationFn: createObra,
-    onSuccess: () => {
+    onSuccess: (nuevaObra) => {
       queryClient.invalidateQueries({ queryKey: ['obras'] })
+      // Auto-upload catalog if a file was selected
+      if (catalogoFile) {
+        const fd = new FormData()
+        fd.append('excel', catalogoFile)
+        fd.append('obra_id', nuevaObra.id)
+        setUploadingId(nuevaObra.id)
+        mutUpload.mutate(fd)
+        setCatalogoFile(null)
+      }
       setForm(EMPTY)
       setShow(false)
     }
@@ -65,14 +77,18 @@ export default function Obras() {
   }
 
   const fileInputRef = React.useRef(null)
+  const createFileRef = React.useRef(null)
   const [uploadingId, setUploadingId] = useState(null)
   const [guiaOpen, setGuiaOpen] = useState(false)
-  
+  const [catalogoFile, setCatalogoFile] = useState(null)
+  const [uploadResult, setUploadResult] = useState(null)
+
   const mutUpload = useMutation({
     mutationFn: (formData) => importarCatalogo(formData),
     onSuccess: (res) => {
-      alert(`Catálogo importado. ${res.insertados} conceptos insertados.`)
+      setUploadResult(`Catálogo importado: ${res.insertados} conceptos nuevos, ${res.actualizados ?? 0} actualizados.`)
       setUploadingId(null)
+      queryClient.invalidateQueries({ queryKey: ['catalogo_obras'] })
     },
     onError: (err) => {
       alert(err.message)
@@ -154,10 +170,12 @@ export default function Obras() {
           setForm(EMPTY)
           setIsEditing(false)
           setShow(true)
+          setUploadResult(null)
         }}>
           + Nueva obra
         </button>
       </div>
+      {uploadResult && !show && <div className="alert alert-success mb-4">{uploadResult}</div>}
       <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept=".xlsx, .xls, .csv" onChange={handleFileChange} />
 
       {show && (
@@ -194,81 +212,151 @@ export default function Obras() {
               <input type="date" value={form.fecha_cierre} onChange={set('fecha_cierre')} />
             </div>
           </div>
+
+          {/* Catálogo Excel — solo al crear */}
+          {!isEditing && (
+            <div className="mt-3 p-3 border border-dashed border-gray-300 rounded-lg bg-gray-50">
+              <div className="text-sm font-medium text-gray-700 mb-1">
+                Catálogo de insumos — <span className="text-gray-400 font-normal">opcional</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <input
+                  ref={createFileRef}
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  style={{ display: 'none' }}
+                  onChange={e => { setCatalogoFile(e.target.files[0] || null); e.target.value = '' }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => createFileRef.current?.click()}
+                >
+                  Seleccionar Excel
+                </button>
+                {catalogoFile
+                  ? <span className="text-sm text-primary font-medium">{catalogoFile.name}</span>
+                  : <span className="text-xs text-gray-400">Si lo adjuntas, el catálogo se importará automáticamente al guardar la obra.</span>
+                }
+                {catalogoFile && (
+                  <button type="button" className="text-xs text-red-400 hover:text-red-600 ml-auto" onClick={() => setCatalogoFile(null)}>Quitar</button>
+                )}
+              </div>
+              <div className="mt-1.5">
+                <button type="button" className="text-xs text-blue-500 hover:underline" onClick={() => setGuiaOpen(true)}>
+                  Ver formato requerido
+                </button>
+              </div>
+            </div>
+          )}
+
+          {uploadResult && <div className="alert alert-success mt-3">{uploadResult}</div>}
+
           <div className="flex gap-2 mt-3">
             <button className="btn btn-primary" onClick={save} disabled={mutCreate.isPending || mutUpdate.isPending}>
-              {(mutCreate.isPending || mutUpdate.isPending) ? 'Guardando...' : 'Guardar obra'}
+              {(mutCreate.isPending || mutUpdate.isPending) ? 'Guardando...' : (isEditing ? 'Guardar cambios' : catalogoFile ? 'Guardar y cargar catálogo' : 'Guardar obra')}
             </button>
-            <button className="btn" onClick={() => setShow(false)}>Cancelar</button>
+            <button className="btn" onClick={() => { setShow(false); setCatalogoFile(null); setUploadResult(null) }}>Cancelar</button>
           </div>
         </div>
       )}
 
-      {isLoading ? <Loader /> : (
-        <div className="card">
-          <div className="overflow-x-auto">
-            <table>
-              <thead>
-                <tr>
-                  <th>Obra</th>
-                  <th>Cliente</th>
-                  <th>Ubicación</th>
-                  <th>Gasto Est.</th>
-                  <th>Estatus</th>
-                  <th className="w-32">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {obras.map(o => (
-                  <tr key={o.id} className={o.status === 'Archivada' ? 'opacity-60' : ''}>
-                    <td className="font-semibold text-gray-900">{o.nombre}</td>
-                    <td>{o.cliente || '—'}</td>
-                    <td>{o.ubicacion || '—'}</td>
-                    <td>{fmt(o.gasto_acumulado || 0)}</td>
-                    <td><Badge s={o.status} /></td>
-                    <td>
-                      <div className="flex gap-2">
-                        <button 
-                          className="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-2 py-1 rounded"
-                          onClick={() => handleEdit(o)}
-                        >
-                          Editar
-                        </button>
-                        <button 
-                          className="text-xs bg-green-50 text-green-600 hover:bg-green-100 px-2 py-1 rounded flex items-center gap-1"
-                          onClick={() => triggerUpload(o.id)}
-                          disabled={uploadingId === o.id || mutUpload.isPending}
-                          title="Importar catálogo de conceptos (Excel)"
-                        >
-                          {uploadingId === o.id && mutUpload.isPending ? 'Cargando...' : '↑ Excel'}
-                        </button>
-                        <button
-                          className="text-xs bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-700 px-2 py-1 rounded"
-                          onClick={() => setGuiaOpen(true)}
-                          title="Ver formato requerido del Excel"
-                        >
-                          ?
-                        </button>
-                        {o.status !== 'Archivada' && (
-                          <button 
-                            className="text-xs bg-red-50 text-red-600 hover:bg-red-100 px-2 py-1 rounded"
-                            onClick={() => handleDelete(o.id)}
-                            disabled={mutDelete.isPending}
-                          >
-                            Archivar
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {obras.length === 0 && (
-                  <tr><td colSpan="6" className="text-center text-gray-400">No hay obras registradas.</td></tr>
+      {isLoading ? <Loader /> : (() => {
+        const activas    = obras.filter(o => o.status !== 'Archivada')
+        const archivadas = obras.filter(o => o.status === 'Archivada')
+        const visibles   = showArchived ? obras : activas
+
+        return (
+          <>
+            <div className="card">
+              <div className="flex items-center justify-between mb-3">
+                <div className="card-title mb-0">
+                  Obras activas
+                  <span className="ml-2 text-xs font-normal text-gray-400">{activas.length} obra{activas.length !== 1 ? 's' : ''}</span>
+                </div>
+                {archivadas.length > 0 && (
+                  <button
+                    className="text-xs text-gray-500 hover:text-gray-800 border border-gray-200 rounded px-2.5 py-1 bg-gray-50 hover:bg-gray-100 transition-colors"
+                    onClick={() => setShowArchived(v => !v)}
+                  >
+                    {showArchived ? 'Ocultar archivadas' : `Ver archivadas (${archivadas.length})`}
+                  </button>
                 )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+              </div>
+              <div className="overflow-x-auto">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Obra</th>
+                      <th>Cliente</th>
+                      <th>Ubicación</th>
+                      <th>Gasto acumulado</th>
+                      <th>Estatus</th>
+                      <th className="w-44">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibles.map(o => (
+                      <tr key={o.id} className={o.status === 'Archivada' ? 'opacity-50 bg-gray-50/50' : ''}>
+                        <td className="font-semibold text-gray-900">{o.nombre}</td>
+                        <td>{o.cliente || '—'}</td>
+                        <td>{o.ubicacion || '—'}</td>
+                        <td>{fmt(o.gasto_acumulado || 0)}</td>
+                        <td><Badge s={o.status} /></td>
+                        <td>
+                          <div className="flex gap-1.5 flex-wrap">
+                            <button
+                              className="text-xs bg-primary/10 text-primary hover:bg-primary/20 px-2 py-1 rounded font-medium"
+                              onClick={() => navigate(`/obras/${o.id}`)}
+                            >
+                              Ver detalle
+                            </button>
+                            <button
+                              className="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-2 py-1 rounded"
+                              onClick={() => handleEdit(o)}
+                            >
+                              Editar
+                            </button>
+                            <button
+                              className="text-xs bg-green-50 text-green-600 hover:bg-green-100 px-2 py-1 rounded"
+                              onClick={() => triggerUpload(o.id)}
+                              disabled={uploadingId === o.id || mutUpload.isPending}
+                              title="Importar catálogo (Excel)"
+                            >
+                              {uploadingId === o.id && mutUpload.isPending ? 'Cargando...' : '↑ Excel'}
+                            </button>
+                            <button
+                              className="text-xs bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-700 px-2 py-1 rounded"
+                              onClick={() => setGuiaOpen(true)}
+                              title="Ver formato requerido del Excel"
+                            >
+                              ?
+                            </button>
+                            {o.status !== 'Archivada' && (
+                              <button
+                                className="text-xs bg-red-50 text-red-600 hover:bg-red-100 px-2 py-1 rounded"
+                                onClick={() => handleDelete(o.id)}
+                                disabled={mutDelete.isPending}
+                              >
+                                Archivar
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {visibles.length === 0 && (
+                      <tr><td colSpan="6" className="text-center text-gray-400 py-6">
+                        {obras.length === 0 ? 'No hay obras registradas.' : 'No hay obras activas.'}
+                      </td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )
+      })()}
     </div>
   )
 }

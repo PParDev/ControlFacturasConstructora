@@ -1,155 +1,286 @@
 import { useState } from 'react'
-import { Badge, CatBadge } from '../components/Badge'
+import { Badge } from '../components/Badge'
 import { Loader } from '../components/Loader'
 import { fmt } from '../lib/utils'
-import { getObras, getGastos, getFacturas, getCuentas, getRecepciones, getPedidos, getExplosionInsumos, getEstadoCuenta, getHistorialVariaciones } from '../lib/api'
+import {
+  getObras, getGastos, getFacturas, getCuentas, getRecepciones, getPedidos,
+  getExplosionInsumos, getEstadoCuenta, getHistorialVariaciones,
+  getAvancesObras, getFlujoCaja, getGastoMensual, getRankingProveedores,
+  getGastosDirectos
+} from '../lib/api'
 import { useQuery } from '@tanstack/react-query'
+
+const TIPOS = [
+  'Avance global de obras',
+  'Flujo de caja',
+  'Explosión de insumos y avance',
+  'Gasto mensual por obra',
+  'Ranking de proveedores',
+  'Historial y Variación de Precios',
+  'Resumen por obra',
+  'Facturas pendientes',
+  'Pedidos vs Entregas (Merma)',
+  'Estado de cuenta bancaria',
+]
 
 export default function Reportes() {
   const [obraId, setObraId] = useState('Todas')
-  const [tipo, setTipo] = useState('Resumen por obra')
-  const [gen,  setGen]  = useState(true)
-  const [guiaOpen, setGuiaOpen] = useState(false)
+  const [tipo,   setTipo]   = useState('Avance global de obras')
 
-  // Filtros para Estado de Cuenta
+  // Filtros Estado de Cuenta
   const [selCuenta, setSelCuenta] = useState('')
-  const [desde, setDesde] = useState('')
-  const [hasta, setHasta] = useState('')
+  const [desde,     setDesde]     = useState('')
+  const [hasta,     setHasta]     = useState('')
 
-  const { data: obras = [], isLoading: lObr } = useQuery({ queryKey: ['obras'], queryFn: getObras })
-  const { data: gastos = [], isLoading: lGas } = useQuery({ queryKey: ['gastos'], queryFn: getGastos })
-  const { data: facturas = [], isLoading: lFac } = useQuery({ queryKey: ['facturas'], queryFn: getFacturas })
-  const { data: cuentas = [], isLoading: lCheq } = useQuery({ queryKey: ['cuentas'], queryFn: getCuentas })
-  const { data: recepciones = [], isLoading: lRec } = useQuery({ queryKey: ['recepciones'], queryFn: getRecepciones })
-  const { data: pedidos = [], isLoading: lPed } = useQuery({ queryKey: ['pedidos'], queryFn: getPedidos })
+  // Filtro fecha corte para Explosión
+  const [explosionHasta, setExplosionHasta] = useState('')
 
-  const { data: explosion = [], isLoading: lExp } = useQuery({ 
-    queryKey: ['explosion', obraId], 
-    queryFn: () => getExplosionInsumos(obraId),
+  // ── Queries base (siempre activas) ──────────────────────────────────────────
+  const { data: obras      = [], isLoading: lObr  } = useQuery({ queryKey: ['obras'],      queryFn: getObras })
+  const { data: gastos     = [], isLoading: lGas  } = useQuery({ queryKey: ['gastos'],     queryFn: getGastos })
+  const { data: facturas   = [], isLoading: lFac  } = useQuery({ queryKey: ['facturas'],   queryFn: getFacturas })
+  const { data: cuentas    = [], isLoading: lCheq } = useQuery({ queryKey: ['cuentas'],    queryFn: getCuentas })
+  const { data: recepciones= [], isLoading: lRec  } = useQuery({ queryKey: ['recepciones'],queryFn: getRecepciones })
+  const { data: pedidos    = [], isLoading: lPed  } = useQuery({ queryKey: ['pedidos'],    queryFn: getPedidos })
+
+  // ── Queries condicionales ───────────────────────────────────────────────────
+  const { data: explosion = [], isLoading: lExp } = useQuery({
+    queryKey: ['explosion', obraId, explosionHasta],
+    queryFn: () => getExplosionInsumos(obraId, explosionHasta || null),
     enabled: tipo === 'Explosión de insumos y avance' && obraId !== 'Todas'
   })
 
   const { data: edc, isLoading: lEdc } = useQuery({
     queryKey: ['estado_cuenta', selCuenta, desde, hasta],
     queryFn: () => getEstadoCuenta(selCuenta, desde, hasta),
-    enabled: tipo === 'Estado de cuenta bancaria' && !!selCuenta && gen
+    enabled: tipo === 'Estado de cuenta bancaria' && !!selCuenta
   })
 
   const { data: variaciones = [], isLoading: lVar } = useQuery({
     queryKey: ['variaciones', obraId],
     queryFn: () => getHistorialVariaciones(obraId),
-    enabled: tipo === 'Historial y Variación de Precios' && obraId !== 'Todas' && gen
+    enabled: tipo === 'Historial y Variación de Precios' && obraId !== 'Todas'
   })
 
-  const isLoading = lObr || lGas || lFac || lCheq || lRec || lPed || lExp || lEdc || lVar
+  const { data: avancesObras = [], isLoading: lAv } = useQuery({
+    queryKey: ['avances_obras'],
+    queryFn: getAvancesObras,
+    enabled: tipo === 'Avance global de obras'
+  })
+
+  const { data: flujoCaja, isLoading: lFC } = useQuery({
+    queryKey: ['flujo_caja'],
+    queryFn: getFlujoCaja,
+    enabled: tipo === 'Flujo de caja'
+  })
+
+  const { data: gastoMensual = [], isLoading: lGM } = useQuery({
+    queryKey: ['gasto_mensual', obraId],
+    queryFn: () => getGastoMensual(obraId === 'Todas' ? null : obraId),
+    enabled: tipo === 'Gasto mensual por obra'
+  })
+
+  const { data: rankingProv = [], isLoading: lRP } = useQuery({
+    queryKey: ['ranking_proveedores', obraId],
+    queryFn: () => getRankingProveedores(obraId === 'Todas' ? null : obraId),
+    enabled: tipo === 'Ranking de proveedores'
+  })
+
+  const { data: gastosDirectos = [], isLoading: lGD } = useQuery({
+    queryKey: ['gastos_directos', obraId],
+    queryFn: () => getGastosDirectos(obraId),
+    enabled: tipo === 'Explosión de insumos y avance' && obraId !== 'Todas'
+  })
+
+  const isLoading = lObr || lGas || lFac || lCheq || lRec || lPed ||
+                    lExp || lEdc || lVar || lAv || lFC || lGM || lRP || lGD
 
   if (isLoading && obras.length === 0) {
     return (
       <div>
         <div className="page-title">Reportes</div>
-        <div className="page-sub">Consulta filtrada por obra, fecha y categoría</div>
+        <div className="page-sub">Análisis y consultas por obra</div>
         <Loader />
       </div>
     )
   }
 
-  // Helpers de filtrado
-  const filterByObra = (items) => {
-    if (obraId === 'Todas') return items
-    return items.filter(i => i.obra_id == obraId)
-  }
+  const filterByObra = (items) => obraId === 'Todas' ? items : items.filter(i => i.obra_id == obraId)
 
-  // Data para reportes
-  const filteredGastos = filterByObra(gastos)
-  const pendingFacts   = filterByObra(facturas.filter(f => f.status === 'Pendiente'))
-  const filteredCuentas = cuentas
-  const filteredPeds   = filterByObra(pedidos)
+  const filteredGastos  = filterByObra(gastos)
+  const pendingFacts    = filterByObra(facturas.filter(f => f.status === 'Pendiente'))
+  const filteredPeds    = filterByObra(pedidos)
+  const totalPend       = pendingFacts.reduce((s, f) => s + f.monto, 0)
 
-  const totalPend = pendingFacts.reduce((s, f) => s + f.monto, 0)
-
-  const matTotal = filteredGastos.filter(g => g.cat === 'Material').reduce((s, g) => s + g.monto, 0)
-  const moTotal  = filteredGastos.filter(g => g.cat === 'Mano de obra').reduce((s, g) => s + g.monto, 0)
-  const ccTotal  = filteredGastos.filter(g => g.cat === 'Caja chica').reduce((s, g) => s + g.monto, 0)
-  const totalGas = matTotal + moTotal + ccTotal
+  const totalGas = filteredGastos.reduce((s, g) => s + g.monto, 0)
 
   const getObraName = () => {
     if (obraId === 'Todas') return 'Todas las obras'
     return obras.find(o => o.id == obraId)?.nombre || `Obra #${obraId}`
   }
 
+  // Reportes que requieren obra específica
+  const needsObra = ['Explosión de insumos y avance', 'Historial y Variación de Precios']
+  // Reportes que NO usan filtro de obra
+  const noObraFilter = ['Avance global de obras', 'Flujo de caja', 'Estado de cuenta bancaria']
+
   return (
     <div>
       <div className="page-title">Reportes</div>
-      <div className="page-sub">Consulta filtrada por obra, fecha y categoría</div>
+      <div className="page-sub">Análisis y consultas por obra</div>
 
-      {/* Filtros */}
+      {/* ── Panel de filtros ── */}
       <div className="card">
         <div className="card-title">Generador de Reportes</div>
         <div className="grid grid-cols-2 gap-2.5">
-          <div className="field">
-            <label>Obra</label>
-            <select value={obraId} onChange={e => { setObraId(e.target.value); setGen(false) }}>
-              <option value="Todas">Todas</option>
-              {obras.map(o => <option key={o.id} value={o.id}>{o.nombre}</option>)}
-            </select>
-          </div>
-          <div className="field">
-            <label>Tipo de reporte</label>
-            <select value={tipo} onChange={e => { setTipo(e.target.value); setGen(false) }}>
-              <option>Resumen por obra</option>
-              <option>Facturas pendientes</option>
-              <option>Pedidos vs Entregas (Merma)</option>
-              <option>Estado de cuenta bancaria</option>
-              <option>Explosión de insumos y avance</option>
-              <option>Historial y Variación de Precios</option>
-            </select>
+          {/* Selector de obra (oculto en reportes globales) */}
+          {!noObraFilter.includes(tipo) && (
+            <div className="field">
+              <label>Obra</label>
+              <select value={obraId} onChange={e => setObraId(e.target.value)}>
+                {!needsObra.includes(tipo) && <option value="Todas">Todas</option>}
+                {obras.map(o => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+              </select>
+            </div>
+          )}
+          <div className={noObraFilter.includes(tipo) ? 'col-span-2' : ''}>
+            <div className="field">
+              <label>Tipo de reporte</label>
+              <select value={tipo} onChange={e => setTipo(e.target.value)}>
+                {TIPOS.map(t => <option key={t}>{t}</option>)}
+              </select>
+            </div>
           </div>
         </div>
 
+        {/* Filtro de fecha corte — solo para Explosión */}
+        {tipo === 'Explosión de insumos y avance' && (
+          <div className="mt-2.5 pt-2.5 border-t border-gray-100 flex items-end gap-4 flex-wrap">
+            <div className="field" style={{ maxWidth: 220 }}>
+              <label>Corte al (opcional)</label>
+              <input
+                type="date"
+                value={explosionHasta}
+                onChange={e => setExplosionHasta(e.target.value)}
+              />
+            </div>
+            <p className="text-[11px] text-gray-400 pb-1">
+              Sin fecha: muestra todo lo facturado hasta hoy. Con fecha: filtra al corte indicado.
+            </p>
+            {obraId !== 'Todas' && (
+              <a
+                href={`/api/reportes/explosion-insumos/${obraId}/excel`}
+                target="_blank"
+                rel="noreferrer"
+                className="btn flex items-center gap-1.5 mb-1"
+              >
+                ↓ Exportar Excel
+              </a>
+            )}
+          </div>
+        )}
+
+        {/* Filtros de Estado de Cuenta */}
         {tipo === 'Estado de cuenta bancaria' && (
           <div className="grid grid-cols-3 gap-2.5 mt-2.5 pt-2.5 border-t border-gray-100">
             <div className="field">
               <label>Cuenta Bancaria</label>
-              <select value={selCuenta} onChange={e => { setSelCuenta(e.target.value); setGen(false) }}>
+              <select value={selCuenta} onChange={e => setSelCuenta(e.target.value)}>
                 <option value="">— Seleccionar cuenta —</option>
                 {cuentas.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
               </select>
             </div>
             <div className="field">
               <label>Desde</label>
-              <input type="date" value={desde} onChange={e => { setDesde(e.target.value); setGen(false) }} />
+              <input type="date" value={desde} onChange={e => setDesde(e.target.value)} />
             </div>
             <div className="field">
               <label>Hasta</label>
-              <input type="date" value={hasta} onChange={e => { setHasta(e.target.value); setGen(false) }} />
+              <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} />
             </div>
           </div>
         )}
-        <div className="mt-3 flex gap-2">
-          <button className="btn btn-primary" onClick={() => setGen(true)}>Generar reporte</button>
-          {tipo === 'Explosión de insumos y avance' && obraId !== 'Todas' && (
-            <a
-              href={`/api/reportes/explosion-insumos/${obraId}/excel`}
-              target="_blank"
-              rel="noreferrer"
-              className="btn flex items-center gap-1.5"
-            >
-              ↓ Exportar Excel
-            </a>
-          )}
-        </div>
       </div>
 
-      {/* ── Resumen por obra ── */}
-      {gen && tipo === 'Resumen por obra' && (
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {/* AVANCE GLOBAL DE OBRAS                                                */}
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {tipo ==='Avance global de obras' && (
+        lAv ? <div className="card"><Loader /></div>
+             : <AvanceGlobalObras obras={avancesObras} fmt={fmt} />
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {/* FLUJO DE CAJA                                                          */}
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {tipo ==='Flujo de caja' && (
+        lFC ? <div className="card"><Loader /></div>
+            : flujoCaja ? <FlujoCaja data={flujoCaja} fmt={fmt} />
+            : <div className="card text-center py-10 text-gray-400">No se pudo cargar el flujo de caja.</div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {/* EXPLOSIÓN DE INSUMOS Y AVANCE                                         */}
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {tipo ==='Explosión de insumos y avance' && (
+        obraId === 'Todas' ? (
+          <div className="card text-center py-10 text-gray-400">
+            Selecciona una obra específica para ver la comparativa de insumos.
+          </div>
+        ) : lExp ? (
+          <div className="card"><Loader /></div>
+        ) : (
+          <ExplosionComparativa
+            explosion={explosion}
+            gastosDirectos={gastosDirectos}
+            obraNombre={getObraName()}
+            obraId={obraId}
+            corteHasta={explosionHasta}
+          />
+        )
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {/* GASTO MENSUAL POR OBRA                                                 */}
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {tipo ==='Gasto mensual por obra' && (
+        lGM ? <div className="card"><Loader /></div>
+            : <GastoMensual datos={gastoMensual} obraNombre={getObraName()} fmt={fmt} />
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {/* RANKING DE PROVEEDORES                                                 */}
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {tipo ==='Ranking de proveedores' && (
+        lRP ? <div className="card"><Loader /></div>
+            : <RankingProveedores datos={rankingProv} obraNombre={getObraName()} fmt={fmt} />
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {/* HISTORIAL Y VARIACIÓN DE PRECIOS                                      */}
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {tipo ==='Historial y Variación de Precios' && (
+        obraId === 'Todas' ? (
+          <div className="card text-center py-10 text-gray-400">
+            Seleccione una obra en específico para ver el historial y variación de precios.
+          </div>
+        ) : lVar ? (
+          <div className="card"><Loader /></div>
+        ) : (
+          <HistorialVariacionPrecios variaciones={variaciones} obraNombre={getObraName()} fmt={fmt} />
+        )
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {/* RESUMEN POR OBRA                                                       */}
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {tipo ==='Resumen por obra' && (
         <>
           <div className="card">
             <div className="card-title">Resumen de Gastos — {getObraName()}</div>
-            <div className="grid grid-cols-4 gap-2.5">
-              <div className="metric-card"><div className="metric-label">Material</div><div className="metric-value">{fmt(matTotal)}</div></div>
-              <div className="metric-card"><div className="metric-label">Mano de obra</div><div className="metric-value">{fmt(moTotal)}</div></div>
-              <div className="metric-card"><div className="metric-label">Caja chica</div><div className="metric-value">{fmt(ccTotal)}</div></div>
-              <div className="metric-card"><div className="metric-label">Total</div><div className="metric-value text-primary">{fmt(totalGas)}</div></div>
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="metric-card"><div className="metric-label">Total gastos directos</div><div className="metric-value text-primary">{fmt(totalGas)}</div></div>
+              <div className="metric-card"><div className="metric-label">Registros</div><div className="metric-value">{filteredGastos.length}</div></div>
             </div>
           </div>
           <div className="card">
@@ -157,20 +288,19 @@ export default function Reportes() {
             <div className="overflow-x-auto">
               <table>
                 <thead>
-                  <tr><th>Fecha</th><th>Obra</th><th>Categoría</th><th>Concepto</th><th>Monto</th></tr>
+                  <tr><th>Fecha</th><th>Obra</th><th>Concepto</th><th>Monto</th></tr>
                 </thead>
                 <tbody>
                   {filteredGastos.map(g => (
                     <tr key={g.id}>
                       <td>{g.fecha}</td>
                       <td>{obras.find(o => o.id === g.obra_id)?.nombre || g.obra_id}</td>
-                      <td><CatBadge s={g.cat} /></td>
                       <td>{g.concepto}</td>
                       <td className="font-semibold">{fmt(g.monto)}</td>
                     </tr>
                   ))}
                   {filteredGastos.length === 0 && (
-                    <tr><td colSpan="5" className="text-center text-gray-400">Sin gastos registrados</td></tr>
+                    <tr><td colSpan="4" className="text-center text-gray-400">Sin gastos registrados</td></tr>
                   )}
                 </tbody>
               </table>
@@ -179,8 +309,10 @@ export default function Reportes() {
         </>
       )}
 
-      {/* ── Facturas pendientes ── */}
-      {gen && tipo === 'Facturas pendientes' && (
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {/* FACTURAS PENDIENTES                                                    */}
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {tipo ==='Facturas pendientes' && (
         <div className="card">
           <div className="card-title">Facturas pendientes de pago — {getObraName()}</div>
           <div className="overflow-x-auto">
@@ -195,7 +327,8 @@ export default function Reportes() {
                     <td>{f.proveedor}</td>
                     <td>{obras.find(o => o.id === f.obra_id)?.nombre || f.obra_id}</td>
                     <td>{f.fecha}</td>
-                    <td>{fmt(f.monto)}</td><td><Badge s={f.status} /></td>
+                    <td>{fmt(f.monto)}</td>
+                    <td><Badge s={f.status} /></td>
                   </tr>
                 ))}
                 {pendingFacts.length > 0 ? (
@@ -213,8 +346,10 @@ export default function Reportes() {
         </div>
       )}
 
-      {/* ── Pedidos vs Entregas (Merma) ── */}
-      {gen && tipo === 'Pedidos vs Entregas (Merma)' && (
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {/* PEDIDOS VS ENTREGAS                                                    */}
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {tipo ==='Pedidos vs Entregas (Merma)' && (
         <div className="card">
           <div className="card-title">Pedidos vs Entregas — {getObraName()}</div>
           <div className="overflow-x-auto">
@@ -225,15 +360,14 @@ export default function Reportes() {
               <tbody>
                 {filteredPeds.map(p => {
                   const recsForPed = recepciones.filter(r => r.pedido_id === p.id)
-                  const totalRec = recsForPed.reduce((sum, r) => sum + r.cantidad_recibida, 0)
-                  const diff = p.cantidad - totalRec
-                  let badge = "Pendiente"
+                  const totalRec   = recsForPed.reduce((sum, r) => sum + r.cantidad_recibida, 0)
+                  const diff       = p.cantidad - totalRec
+                  let badge = 'Pendiente'
                   if (totalRec > 0) {
-                    if (diff === 0) badge = "Correcto"
-                    else if (diff > 0) badge = "Faltante"
-                    else badge = "Superávit"
+                    if (diff === 0)  badge = 'Correcto'
+                    else if (diff > 0) badge = 'Faltante'
+                    else badge = 'Superávit'
                   }
-
                   return (
                     <tr key={p.id}>
                       <td className="font-mono text-xs">{p.folio}</td>
@@ -245,9 +379,9 @@ export default function Reportes() {
                         {diff === 0 ? '—' : `${diff} u`}
                       </td>
                       <td>
-                        <span className={`px-2 py-0.5 rounded text-[11px] font-medium 
-                          ${badge === 'Correcto' ? 'bg-green-100 text-green-700' : 
-                            badge === 'Faltante' ? 'bg-red-100 text-red-700' : 
+                        <span className={`px-2 py-0.5 rounded text-[11px] font-medium
+                          ${badge === 'Correcto'  ? 'bg-green-100 text-green-700' :
+                            badge === 'Faltante'  ? 'bg-red-100 text-red-700' :
                             badge === 'Superávit' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
                           {badge}
                         </span>
@@ -264,64 +398,512 @@ export default function Reportes() {
         </div>
       )}
 
-      {/* ── Estado de cuenta bancaria ── */}
-      {gen && tipo === 'Estado de cuenta bancaria' && (
-        <>
-          {!selCuenta ? (
-            <div className="card text-center py-10 text-gray-400">
-              Seleccione una cuenta bancaria y rango de fechas para generar el estado de cuenta.
-            </div>
-          ) : !edc ? (
-             <div className="card"><Loader /></div>
-          ) : (
-            <EstadoCuentaDetallado edc={edc} fmt={fmt} />
-          )}
-        </>
-      )}
-
-      {/* ── Variación de Precios ── */}
-      {gen && tipo === 'Historial y Variación de Precios' && (
-        <>
-          {obraId === 'Todas' ? (
-            <div className="card text-center py-10 text-gray-400">
-              Seleccione una obra en específico para ver el historial y variación de precios.
-            </div>
-          ) : lVar ? (
-            <div className="card"><div className="py-8 text-center text-gray-400">Cargando métricas de impacto...</div></div>
-          ) : (
-            <HistorialVariacionPrecios variaciones={variaciones} obraNombre={getObraName()} fmt={fmt} />
-          )}
-        </>
-      )}
-
-      {/* ── Comparativa Presupuesto vs Facturado ── */}
-      {gen && tipo === 'Explosión de insumos y avance' && (
-        <>
-          {obraId === 'Todas' ? (
-            <div className="card text-center py-10 text-gray-400">
-              Selecciona una obra específica para ver la comparativa de insumos.
-            </div>
-          ) : lExp ? (
-            <div className="card"><div className="py-8 text-center text-gray-400">Cargando...</div></div>
-          ) : (
-            <ExplosionComparativa
-              explosion={explosion}
-              obraNombre={getObraName()}
-              obraId={obraId}
-            />
-          )}
-        </>
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {/* ESTADO DE CUENTA BANCARIA                                              */}
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {tipo ==='Estado de cuenta bancaria' && (
+        !selCuenta ? (
+          <div className="card text-center py-10 text-gray-400">
+            Seleccione una cuenta bancaria y rango de fechas para generar el estado de cuenta.
+          </div>
+        ) : !edc ? (
+          <div className="card"><Loader /></div>
+        ) : (
+          <EstadoCuentaDetallado edc={edc} fmt={fmt} />
+        )
       )}
     </div>
   )
 }
 
-// ─────────────────────────────────────────────────────────────
-// Componente separado para la comparativa
-// ─────────────────────────────────────────────────────────────
-function ExplosionComparativa({ explosion, obraNombre, obraId }) {
-  const [q, setQ] = useState('')
-  const [catFiltro, setCatFiltro] = useState('Todas')
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AVANCE GLOBAL DE OBRAS
+// ═══════════════════════════════════════════════════════════════════════════════
+function AvanceGlobalObras({ obras, fmt }) {
+  const total_presupuesto  = obras.reduce((s, o) => s + o.presupuesto_total, 0)
+  const total_facturado    = obras.reduce((s, o) => s + o.total_facturado,   0)
+  const total_gd           = obras.reduce((s, o) => s + (o.gastos_directos || 0), 0)
+  const total_comprometido = total_facturado + total_gd
+  const total_pendiente    = obras.reduce((s, o) => s + o.pendiente_pagar,   0)
+  const diferencia         = total_comprometido - total_presupuesto
+
+  const estadoColor = { Activa: 'bg-green-100 text-green-700', 'En pausa': 'bg-yellow-100 text-yellow-700', Terminada: 'bg-gray-100 text-gray-500' }
+
+  return (
+    <>
+      {/* KPIs globales */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <div className="metric-card border-l-4 border-blue-400">
+          <div className="metric-label">Presupuesto total (todas las obras)</div>
+          <div className="metric-value text-blue-600">{fmt(total_presupuesto)}</div>
+          <div className="metric-sub">{obras.length} obras</div>
+        </div>
+        <div className="metric-card border-l-4 border-gray-400">
+          <div className="metric-label">Total comprometido</div>
+          <div className="metric-value text-gray-800">{fmt(total_comprometido)}</div>
+          <div className="metric-sub">Facturas + gastos directos</div>
+        </div>
+        <div className={`metric-card border-l-4 ${diferencia > 0 ? 'border-red-400' : 'border-emerald-400'}`}>
+          <div className="metric-label">Diferencia acumulada</div>
+          <div className={`metric-value ${diferencia > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+            {diferencia > 0 ? '+' : ''}{fmt(diferencia)}
+          </div>
+          <div className="metric-sub">{diferencia > 0 ? '⚠ Sobrepresupuesto' : 'Dentro del presupuesto'}</div>
+        </div>
+        <div className="metric-card border-l-4 border-orange-300">
+          <div className="metric-label">Por pagar (facturas pendientes)</div>
+          <div className="metric-value text-orange-600">{fmt(total_pendiente)}</div>
+          <div className="metric-sub">Compromisos sin liquidar</div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-title">Comparativa Estimado vs Comprometido — Todas las obras</div>
+        <div className="text-xs text-gray-400 -mt-2 mb-3">
+          Comprometido = facturas capturadas + gastos directos (caja chica, mano de obra)
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left bg-gray-50 border-y border-gray-200">
+                <th className="px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase">Obra</th>
+                <th className="px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase text-center">Estado</th>
+                <th className="px-3 py-2.5 text-xs font-semibold text-blue-600 uppercase text-right border-l border-blue-100 bg-blue-50/50">Presupuesto est.</th>
+                <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 uppercase text-right border-l border-gray-200">Facturado</th>
+                <th className="px-3 py-2.5 text-xs font-semibold text-purple-600 uppercase text-right">Gastos directos</th>
+                <th className="px-3 py-2.5 text-xs font-semibold text-orange-500 uppercase text-right border-l border-gray-200">Por pagar</th>
+                <th className="px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase text-right border-l border-gray-200">Diferencia</th>
+                <th className="px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase text-center w-36">% Avance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {obras.map((o) => {
+                const comprometido = (o.total_facturado || 0) + (o.gastos_directos || 0)
+                const dif   = comprometido - o.presupuesto_total
+                const pct   = o.presupuesto_total > 0 ? (comprometido / o.presupuesto_total) * 100 : 0
+                const sobre = dif > 0.01
+                return (
+                  <tr key={o.obra_id} className={`border-t border-gray-100 hover:bg-gray-50 transition-colors ${sobre ? 'bg-red-50/30' : ''}`}>
+                    <td className="px-3 py-3 font-semibold text-gray-800">{o.nombre}</td>
+                    <td className="px-3 py-3 text-center">
+                      <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${estadoColor[o.estado] || 'bg-gray-100 text-gray-500'}`}>
+                        {o.estado}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 text-right font-semibold text-blue-700 border-l border-blue-100 bg-blue-50/20">
+                      {o.presupuesto_total > 0 ? fmt(o.presupuesto_total) : <span className="text-gray-300 text-xs">Sin catálogo</span>}
+                    </td>
+                    <td className="px-3 py-3 text-right text-gray-800 border-l border-gray-100">
+                      {o.total_facturado > 0 ? fmt(o.total_facturado) : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      {o.gastos_directos > 0
+                        ? <span className="text-purple-600 font-medium">{fmt(o.gastos_directos)}</span>
+                        : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-3 py-3 text-right border-l border-gray-100">
+                      {o.pendiente_pagar > 0
+                        ? <span className="text-orange-600 font-medium">{fmt(o.pendiente_pagar)}</span>
+                        : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className={`px-3 py-3 text-right font-bold border-l border-gray-100 ${sobre ? 'text-red-600' : comprometido > 0 ? 'text-emerald-600' : 'text-gray-300'}`}>
+                      {o.presupuesto_total === 0 ? '—' : (sobre ? '+' : '') + fmt(dif)}
+                    </td>
+                    <td className="px-3 py-3">
+                      {o.presupuesto_total === 0 ? (
+                        <span className="text-gray-300 text-xs block text-center">Sin est.</span>
+                      ) : (
+                        <div>
+                          <div className="h-2 bg-gray-100 rounded-full overflow-hidden mb-0.5">
+                            <div className="h-full rounded-full transition-all"
+                              style={{ width: `${Math.min(pct, 100)}%`, background: pct > 100 ? '#dc2626' : pct > 80 ? '#d97706' : '#185FA5' }} />
+                          </div>
+                          <span className={`text-[10px] font-semibold block text-center ${pct > 100 ? 'text-red-600' : pct > 80 ? 'text-yellow-600' : 'text-gray-600'}`}>
+                            {pct.toFixed(1)}%
+                          </span>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+              {obras.length === 0 && (
+                <tr><td colSpan="8" className="text-center text-gray-400 py-8">No hay obras registradas.</td></tr>
+              )}
+            </tbody>
+            {obras.length > 0 && (
+              <tfoot>
+                <tr className="border-t-2 border-gray-300 bg-gray-50 font-bold text-sm">
+                  <td colSpan="2" className="px-3 py-3 text-gray-600">{obras.length} obras</td>
+                  <td className="px-3 py-3 text-right text-blue-700 border-l border-blue-100 bg-blue-50/20">{fmt(total_presupuesto)}</td>
+                  <td className="px-3 py-3 text-right text-gray-800 border-l border-gray-100">{fmt(total_facturado)}</td>
+                  <td className="px-3 py-3 text-right text-purple-600">{total_gd > 0 ? fmt(total_gd) : '—'}</td>
+                  <td className="px-3 py-3 text-right text-orange-600 border-l border-gray-100">{fmt(total_pendiente)}</td>
+                  <td className={`px-3 py-3 text-right border-l border-gray-100 ${diferencia > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {diferencia > 0 ? '+' : ''}{fmt(diferencia)}
+                  </td>
+                  <td className="px-3 py-3 text-center text-xs text-gray-500">
+                    {total_presupuesto > 0 ? (total_comprometido / total_presupuesto * 100).toFixed(1) + '%' : '—'}
+                  </td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </div>
+    </>
+  )
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FLUJO DE CAJA
+// ═══════════════════════════════════════════════════════════════════════════════
+function FlujoCaja({ data, fmt }) {
+  const { facturas_por_obra, total_pendiente, cuentas, saldo_fiscal, saldo_caja, deuda_credito, liquidez_neta } = data
+  const liquidezOk = liquidez_neta >= 0
+
+  return (
+    <>
+      {/* Panel ejecutivo */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <div className="metric-card border-l-4 border-emerald-400">
+          <div className="metric-label">Saldo bancario (fiscal)</div>
+          <div className="metric-value text-emerald-600">{fmt(saldo_fiscal)}</div>
+          <div className="metric-sub">Cuentas fiscales</div>
+        </div>
+        <div className="metric-card border-l-4 border-blue-300">
+          <div className="metric-label">Caja chica disponible</div>
+          <div className="metric-value text-blue-600">{fmt(saldo_caja)}</div>
+          <div className="metric-sub">Efectivo en obra</div>
+        </div>
+        <div className="metric-card border-l-4 border-red-400">
+          <div className="metric-label">Por pagar (facturas)</div>
+          <div className="metric-value text-red-600">{fmt(total_pendiente)}</div>
+          <div className="metric-sub">{facturas_por_obra.reduce((s, f) => s + f.cantidad, 0)} facturas pendientes</div>
+        </div>
+        <div className={`metric-card border-l-4 ${liquidezOk ? 'border-emerald-500' : 'border-red-500'}`}>
+          <div className="metric-label">Posición neta de caja</div>
+          <div className={`metric-value ${liquidezOk ? 'text-emerald-600' : 'text-red-600'}`}>
+            {fmt(liquidez_neta)}
+          </div>
+          <div className="metric-sub">{liquidezOk ? 'Fondos suficientes' : '⚠ Fondos insuficientes'}</div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Facturas pendientes por obra */}
+        <div className="card">
+          <div className="card-title">Facturas pendientes por obra</div>
+          {facturas_por_obra.length === 0 ? (
+            <p className="text-gray-400 text-sm py-4 text-center">No hay facturas pendientes.</p>
+          ) : (
+            <div className="space-y-3 mt-2">
+              {facturas_por_obra.map(f => {
+                const pct = total_pendiente > 0 ? (f.total / total_pendiente) * 100 : 0
+                return (
+                  <div key={f.obra_id}>
+                    <div className="flex justify-between items-baseline mb-1">
+                      <span className="text-sm font-medium text-gray-700">{f.obra_nombre}</span>
+                      <span className="text-sm font-bold text-red-600">{fmt(f.total)}</span>
+                    </div>
+                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-red-400 rounded-full" style={{ width: `${pct}%` }} />
+                    </div>
+                    <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
+                      <span>{f.cantidad} {f.cantidad === 1 ? 'factura' : 'facturas'}</span>
+                      <span>{pct.toFixed(1)}% del total</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Estado de cuentas */}
+        <div className="card">
+          <div className="card-title">Estado de cuentas bancarias</div>
+          <div className="space-y-2 mt-2">
+            {cuentas.map(c => {
+              const esCred = c.tipo === 'Crédito'
+              const saldo  = c.saldo_actual
+              return (
+                <div key={c.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                  <div>
+                    <div className="text-sm font-medium text-gray-700">{c.nombre}</div>
+                    <div className="text-[10px] text-gray-400">{c.banco} · {c.tipo}</div>
+                  </div>
+                  <span className={`text-sm font-bold ${esCred ? 'text-red-500' : saldo >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                    {esCred ? '-' : ''}{fmt(Math.abs(saldo))}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+          {deuda_credito > 0 && (
+            <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500 flex justify-between">
+              <span>Deuda en tarjetas de crédito</span>
+              <span className="font-semibold text-red-500">{fmt(deuda_credito)}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  )
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// GASTO MENSUAL POR OBRA
+// ═══════════════════════════════════════════════════════════════════════════════
+function GastoMensual({ datos, obraNombre, fmt }) {
+  // Obtener lista única de meses y obras
+  const meses = [...new Set(datos.map(d => d.mes))].sort()
+  const obrasUnicas = [...new Set(datos.map(d => d.obra_nombre))].sort()
+  const multiObra = obrasUnicas.length > 1
+
+  // Construir mapa [mes][obra] = total
+  const mapa = {}
+  datos.forEach(d => {
+    if (!mapa[d.mes]) mapa[d.mes] = {}
+    mapa[d.mes][d.obra_nombre] = d.total_facturado
+  })
+
+  const maxMes = Math.max(...meses.map(m => {
+    return Object.values(mapa[m] || {}).reduce((s, v) => s + v, 0)
+  }), 1)
+
+  const fmtMes = (m) => {
+    const [y, mo] = m.split('-')
+    const nombres = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
+    return `${nombres[parseInt(mo) - 1]} ${y}`
+  }
+
+  const colores = ['#185FA5','#1D9E75','#d97706','#9333ea','#e11d48','#0891b2']
+
+  if (datos.length === 0) {
+    return (
+      <div className="card text-center py-10 text-gray-400">
+        No hay facturas con detalles de insumos para mostrar el gasto mensual.
+      </div>
+    )
+  }
+
+  return (
+    <div className="card">
+      <div className="card-title">
+        Gasto mensual facturado — <span className="text-primary">{obraNombre}</span>
+      </div>
+
+      {/* Barras por mes */}
+      <div className="space-y-3 mt-4">
+        {meses.map(mes => {
+          const totalMes = Object.values(mapa[mes] || {}).reduce((s, v) => s + v, 0)
+          const pct = (totalMes / maxMes) * 100
+          return (
+            <div key={mes}>
+              <div className="flex justify-between items-baseline mb-1">
+                <span className="text-sm font-medium text-gray-600 w-20">{fmtMes(mes)}</span>
+                <div className="flex-1 mx-3">
+                  {multiObra ? (
+                    // Barra apilada por obra
+                    <div className="h-5 bg-gray-100 rounded-full overflow-hidden flex">
+                      {obrasUnicas.map((obra, i) => {
+                        const val = mapa[mes]?.[obra] || 0
+                        const w   = totalMes > 0 ? (val / totalMes) * pct : 0
+                        return w > 0 ? (
+                          <div
+                            key={obra}
+                            className="h-full transition-all"
+                            style={{ width: `${w}%`, background: colores[i % colores.length] }}
+                            title={`${obra}: ${fmt(val)}`}
+                          />
+                        ) : null
+                      })}
+                    </div>
+                  ) : (
+                    <div className="h-5 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-primary rounded-full" style={{ width: `${pct}%` }} />
+                    </div>
+                  )}
+                </div>
+                <span className="text-sm font-bold text-gray-800 w-28 text-right">{fmt(totalMes)}</span>
+              </div>
+              {/* Desglose por obra en vista multiobra */}
+              {multiObra && (
+                <div className="flex gap-3 ml-20 flex-wrap mt-1 mb-2">
+                  {obrasUnicas.filter(o => mapa[mes]?.[o] > 0).map((obra, i) => (
+                    <span key={obra} className="text-[10px] text-gray-500 flex items-center gap-1">
+                      <span className="inline-block w-2 h-2 rounded-full" style={{ background: colores[i % colores.length] }} />
+                      {obra}: {fmt(mapa[mes][obra])}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Tabla resumen */}
+      <div className="overflow-x-auto mt-6">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50 border-y border-gray-200">
+              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Mes</th>
+              {multiObra && obrasUnicas.map(o => (
+                <th key={o} className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase">{o}</th>
+              ))}
+              <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700 uppercase">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {meses.map((mes, i) => {
+              const totalMes = Object.values(mapa[mes] || {}).reduce((s, v) => s + v, 0)
+              return (
+                <tr key={mes} className={`border-t border-gray-100 ${i % 2 === 0 ? '' : 'bg-gray-50/30'}`}>
+                  <td className="px-3 py-2 font-medium text-gray-700">{fmtMes(mes)}</td>
+                  {multiObra && obrasUnicas.map(o => (
+                    <td key={o} className="px-3 py-2 text-right text-gray-600">
+                      {mapa[mes]?.[o] ? fmt(mapa[mes][o]) : <span className="text-gray-200">—</span>}
+                    </td>
+                  ))}
+                  <td className="px-3 py-2 text-right font-bold text-gray-800">{fmt(totalMes)}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-gray-300 bg-gray-50 font-bold">
+              <td className="px-3 py-2 text-gray-600">Total</td>
+              {multiObra && obrasUnicas.map(o => (
+                <td key={o} className="px-3 py-2 text-right text-gray-700">
+                  {fmt(datos.filter(d => d.obra_nombre === o).reduce((s, d) => s + d.total_facturado, 0))}
+                </td>
+              ))}
+              <td className="px-3 py-2 text-right text-primary">
+                {fmt(datos.reduce((s, d) => s + d.total_facturado, 0))}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RANKING DE PROVEEDORES
+// ═══════════════════════════════════════════════════════════════════════════════
+function RankingProveedores({ datos, obraNombre, fmt }) {
+  const total = datos.reduce((s, d) => s + d.total_facturado, 0)
+
+  if (datos.length === 0) {
+    return (
+      <div className="card text-center py-10 text-gray-400">
+        No hay facturas registradas para mostrar el ranking de proveedores.
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        <div className="metric-card">
+          <div className="metric-label">Total proveedores</div>
+          <div className="metric-value">{datos.length}</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Total facturado</div>
+          <div className="metric-value text-primary">{fmt(total)}</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Mayor proveedor</div>
+          <div className="text-base font-bold text-gray-800 mt-1 truncate">{datos[0]?.proveedor || '—'}</div>
+          <div className="metric-sub">{datos[0] ? fmt(datos[0].total_facturado) : ''}</div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-title">
+          Ranking de Proveedores — <span className="text-primary">{obraNombre}</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left bg-gray-50 border-y border-gray-200">
+                <th className="px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-8">#</th>
+                <th className="px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase">Proveedor</th>
+                <th className="px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase text-center">Facturas</th>
+                <th className="px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase text-center">Obras</th>
+                <th className="px-3 py-2.5 text-xs font-semibold text-emerald-600 uppercase text-right border-l border-gray-200">Pagado</th>
+                <th className="px-3 py-2.5 text-xs font-semibold text-orange-500 uppercase text-right">Pendiente</th>
+                <th className="px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase text-right border-l border-gray-200">Total</th>
+                <th className="px-3 py-2.5 text-xs font-semibold text-gray-400 uppercase text-center w-28">% del total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {datos.map((d, i) => {
+                const pct = total > 0 ? (d.total_facturado / total) * 100 : 0
+                return (
+                  <tr key={d.proveedor} className="border-t border-gray-100 hover:bg-gray-50">
+                    <td className="px-3 py-2.5 text-gray-400 font-mono text-xs">{i + 1}</td>
+                    <td className="px-3 py-2.5">
+                      <span className="font-semibold text-gray-800">{d.proveedor || <em className="text-gray-300">Sin nombre</em>}</span>
+                    </td>
+                    <td className="px-3 py-2.5 text-center text-gray-600">{d.num_facturas}</td>
+                    <td className="px-3 py-2.5 text-center text-gray-600">{d.num_obras}</td>
+                    <td className="px-3 py-2.5 text-right text-emerald-600 font-medium border-l border-gray-100">
+                      {d.total_pagado > 0 ? fmt(d.total_pagado) : <span className="text-gray-200">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-right">
+                      {d.total_pendiente > 0
+                        ? <span className="text-orange-600 font-medium">{fmt(d.total_pendiente)}</span>
+                        : <span className="text-gray-200">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-bold text-gray-800 border-l border-gray-100">
+                      {fmt(d.total_facturado)}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-0.5">
+                        <div className="h-full bg-primary rounded-full" style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="text-[10px] text-gray-500 block text-center">{pct.toFixed(1)}%</span>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-gray-300 bg-gray-50 font-bold">
+                <td colSpan="4" className="px-3 py-2.5 text-gray-600">{datos.length} proveedores</td>
+                <td className="px-3 py-2.5 text-right text-emerald-600 border-l border-gray-100">
+                  {fmt(datos.reduce((s, d) => s + d.total_pagado, 0))}
+                </td>
+                <td className="px-3 py-2.5 text-right text-orange-600">
+                  {fmt(datos.reduce((s, d) => s + d.total_pendiente, 0))}
+                </td>
+                <td className="px-3 py-2.5 text-right text-primary border-l border-gray-100">{fmt(total)}</td>
+                <td className="px-3 py-2.5 text-center text-xs text-gray-500">100%</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </>
+  )
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// EXPLOSIÓN DE INSUMOS Y AVANCE
+// ═══════════════════════════════════════════════════════════════════════════════
+function ExplosionComparativa({ explosion, gastosDirectos = [], obraNombre, obraId, corteHasta }) {
+  const [q, setQ]                       = useState('')
+  const [catFiltro, setCatFiltro]       = useState('Todas')
   const [soloDesviados, setSoloDesviados] = useState(false)
 
   const categorias = [...new Set(explosion.map(e => e.categoria).filter(Boolean))]
@@ -333,21 +915,24 @@ function ExplosionComparativa({ explosion, obraNombre, obraId }) {
     return matchQ && matchCat && matchDes
   })
 
-  // Totales globales (sobre todo el catálogo, no solo el filtro)
   const totPresup = explosion.reduce((s, e) => s + (e.presupuesto_total || 0), 0)
   const totReal   = explosion.reduce((s, e) => s + (e.costo_real || 0), 0)
   const totDif    = totReal - totPresup
   const pctEjec   = totPresup > 0 ? (totReal / totPresup) * 100 : 0
-  const sobrepres  = totReal > totPresup
+  const sobrepres = totReal > totPresup
 
-  // Totales del filtro actual
   const filtPresup = filas.reduce((s, e) => s + (e.presupuesto_total || 0), 0)
   const filtReal   = filas.reduce((s, e) => s + (e.costo_real || 0), 0)
   const filtDif    = filtReal - filtPresup
 
   return (
     <>
-      {/* ── KPIs de resumen ── */}
+      {corteHasta && (
+        <div className="mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700 flex items-center gap-2">
+          <span className="font-semibold">Corte al:</span> {corteHasta} — Solo se contabilizan facturas emitidas hasta esta fecha.
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <div className="metric-card border-l-4 border-blue-400">
           <div className="metric-label">Presupuesto total</div>
@@ -355,7 +940,7 @@ function ExplosionComparativa({ explosion, obraNombre, obraId }) {
           <div className="metric-sub">{explosion.length} conceptos</div>
         </div>
         <div className="metric-card border-l-4 border-gray-400">
-          <div className="metric-label">Total facturado</div>
+          <div className="metric-label">Total facturado{corteHasta ? ' al corte' : ''}</div>
           <div className="metric-value text-gray-800">{fmt(totReal)}</div>
           <div className="metric-sub">{explosion.filter(e => e.costo_real > 0).length} con compras</div>
         </div>
@@ -367,7 +952,7 @@ function ExplosionComparativa({ explosion, obraNombre, obraId }) {
           <div className="metric-sub">{sobrepres ? '⚠ Sobrepresupuesto' : 'Dentro del presupuesto'}</div>
         </div>
         <div className="metric-card">
-          <div className="metric-label">% Presupuesto ejecutado</div>
+          <div className="metric-label">% Ejecutado</div>
           <div className={`metric-value ${pctEjec > 100 ? 'text-red-600' : pctEjec > 80 ? 'text-yellow-600' : 'text-gray-900'}`}>
             {pctEjec.toFixed(1)}%
           </div>
@@ -380,36 +965,26 @@ function ExplosionComparativa({ explosion, obraNombre, obraId }) {
         </div>
       </div>
 
-      {/* ── Tabla comparativa ── */}
       <div className="card">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <div className="card-title mb-0">
             Comparativa insumo por insumo — <span className="text-primary">{obraNombre}</span>
           </div>
-          <a
-            href={`/api/reportes/explosion-insumos/${obraId}/excel`}
-            target="_blank"
-            rel="noreferrer"
-            className="btn text-xs px-3 py-[6px] flex items-center gap-1.5"
-          >
+          <a href={`/api/reportes/explosion-insumos/${obraId}/excel`} target="_blank" rel="noreferrer"
+            className="btn text-xs px-3 py-[6px] flex items-center gap-1.5">
             ↓ Exportar Excel
           </a>
         </div>
 
-        {/* Filtros */}
         <div className="flex flex-wrap gap-2 mb-4 items-center">
           <input
             className="flex-1 min-w-[180px] text-sm px-2.5 py-[7px] border border-gray-200 rounded-md outline-none focus:border-primary transition-colors"
-            placeholder="🔍 Buscar concepto o código..."
-            value={q}
-            onChange={e => setQ(e.target.value)}
+            placeholder="Buscar concepto o código..."
+            value={q} onChange={e => setQ(e.target.value)}
           />
           {categorias.length > 0 && (
-            <select
-              className="text-sm border border-gray-200 rounded-md px-2.5 py-[7px] outline-none focus:border-primary"
-              value={catFiltro}
-              onChange={e => setCatFiltro(e.target.value)}
-            >
+            <select className="text-sm border border-gray-200 rounded-md px-2.5 py-[7px] outline-none focus:border-primary"
+              value={catFiltro} onChange={e => setCatFiltro(e.target.value)}>
               <option value="Todas">Todas las categorías</option>
               {categorias.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -430,52 +1005,37 @@ function ExplosionComparativa({ explosion, obraNombre, obraId }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left bg-gray-50 border-y border-gray-200">
-                {/* Identificación */}
                 <th className="px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-16">Cód.</th>
                 <th className="px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Concepto</th>
                 <th className="px-2 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide text-center w-12">Un.</th>
-
-                {/* Bloque ESTIMADO */}
                 <th className="px-3 py-2.5 text-xs font-semibold text-blue-600 uppercase tracking-wide border-l border-blue-100 bg-blue-50/60 text-right">Cant. Pres.</th>
                 <th className="px-3 py-2.5 text-xs font-semibold text-blue-600 uppercase tracking-wide bg-blue-50/60 text-right">Precio Ref.</th>
                 <th className="px-3 py-2.5 text-xs font-semibold text-blue-600 uppercase tracking-wide bg-blue-50/60 text-right">Total Est.</th>
-
-                {/* Bloque REAL */}
                 <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide border-l border-gray-200 text-right">Cant. Real</th>
                 <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide text-right">Precio Real</th>
                 <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide text-right">Total Real</th>
-
-                {/* DIFERENCIA */}
                 <th className="px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide border-l border-gray-200 text-right">Diferencia</th>
                 <th className="px-2 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide text-center w-20">% Avance</th>
               </tr>
             </thead>
             <tbody>
               {filas.map((e, i) => {
-                const diferencia  = e.costo_real - (e.presupuesto_total || 0)
-                const pct         = e.presupuesto_total > 0 ? (e.costo_real / e.presupuesto_total) * 100 : 0
-                const sinCompras  = e.cant_comprada === 0
-                const sobre       = diferencia > 0.01
-                const rowBg       = sobre ? 'bg-red-50/40 hover:bg-red-50/60' : i % 2 === 0 ? 'hover:bg-gray-50' : 'bg-gray-50/30 hover:bg-gray-50'
-
+                const diferencia = e.costo_real - (e.presupuesto_total || 0)
+                const pct        = e.presupuesto_total > 0 ? (e.costo_real / e.presupuesto_total) * 100 : 0
+                const sinCompras = e.cant_comprada === 0
+                const sobre      = diferencia > 0.01
+                const rowBg      = sobre ? 'bg-red-50/40 hover:bg-red-50/60' : i % 2 === 0 ? 'hover:bg-gray-50' : 'bg-gray-50/30 hover:bg-gray-50'
                 return (
                   <tr key={e.id || i} className={`border-t border-gray-100 transition-colors ${rowBg}`}>
-                    {/* Identificación */}
-                    <td className="px-3 py-2">
-                      <span className="font-mono text-[10px] text-gray-400">{e.codigo}</span>
-                    </td>
+                    <td className="px-3 py-2"><span className="font-mono text-[10px] text-gray-400">{e.codigo}</span></td>
                     <td className="px-3 py-2">
                       <span className="font-medium text-gray-800 text-sm">{e.concepto}</span>
                       {e.categoria && <span className="ml-1.5 text-[10px] text-gray-400">{e.categoria}</span>}
                     </td>
                     <td className="px-2 py-2 text-center text-gray-400 text-xs">{e.unidad}</td>
-
-                    {/* Bloque ESTIMADO */}
                     <td className="px-3 py-2 text-right border-l border-blue-100 bg-blue-50/30 text-gray-700">{e.cant_presupuestada}</td>
                     <td className="px-3 py-2 text-right bg-blue-50/30 text-gray-500 text-xs">{fmt(e.precio_estimado)}</td>
                     <td className="px-3 py-2 text-right bg-blue-50/30 font-semibold text-blue-700">{fmt(e.presupuesto_total)}</td>
-
-                    {/* Bloque REAL */}
                     <td className={`px-3 py-2 text-right border-l border-gray-100 ${sinCompras ? 'text-gray-300' : 'text-gray-700'}`}>
                       {sinCompras ? '—' : e.cant_comprada}
                     </td>
@@ -486,8 +1046,6 @@ function ExplosionComparativa({ explosion, obraNombre, obraId }) {
                     <td className={`px-3 py-2 text-right font-semibold ${sinCompras ? 'text-gray-300' : sobre ? 'text-red-600' : 'text-gray-800'}`}>
                       {sinCompras ? '—' : fmt(e.costo_real)}
                     </td>
-
-                    {/* DIFERENCIA */}
                     <td className={`px-3 py-2 text-right border-l border-gray-100 font-bold ${sinCompras ? 'text-gray-300' : sobre ? 'text-red-600' : 'text-emerald-600'}`}>
                       {sinCompras ? '—' : (sobre ? '+' : '') + fmt(diferencia)}
                     </td>
@@ -509,15 +1067,12 @@ function ExplosionComparativa({ explosion, obraNombre, obraId }) {
                   </tr>
                 )
               })}
-
               {filas.length === 0 && (
                 <tr><td colSpan="11" className="text-center text-gray-400 py-8">
                   {explosion.length === 0 ? 'Esta obra no tiene catálogo cargado.' : 'Sin resultados para el filtro actual.'}
                 </td></tr>
               )}
             </tbody>
-
-            {/* Fila de totales del filtro */}
             {filas.length > 0 && (
               <tfoot>
                 <tr className="border-t-2 border-gray-300 bg-gray-50 font-bold text-sm">
@@ -539,25 +1094,76 @@ function ExplosionComparativa({ explosion, obraNombre, obraId }) {
         </div>
       </div>
 
-      {/* Leyenda */}
       <div className="flex gap-4 flex-wrap text-xs text-gray-500 mt-2 px-1">
         <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded bg-blue-50 border border-blue-200"></span> Columnas estimadas (catálogo)</span>
         <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded bg-white border border-gray-200"></span> Columnas reales (facturado)</span>
         <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded bg-red-100 border border-red-200"></span> Fila en sobrepresupuesto</span>
         <span className="flex items-center gap-1.5">⚠ Precio unitario real mayor al de referencia</span>
       </div>
+
+      {/* ── Gastos directos (caja chica, mano de obra) ── */}
+      {gastosDirectos.length > 0 && (() => {
+        const totalGD = gastosDirectos.reduce((s, g) => s + g.total, 0)
+        const totalCatalogo = explosion.reduce((s, e) => s + (e.costo_real || 0), 0)
+        const totalReal = totalCatalogo + totalGD
+        return (
+          <div className="card mt-4 border-l-4 border-purple-300">
+            <div className="card-title text-purple-700">
+              Gastos directos (no vinculados al catálogo)
+            </div>
+            <p className="text-xs text-gray-400 -mt-2 mb-3">
+              Registros de caja chica, mano de obra y otros gastos fuera del flujo OC→Factura.
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-purple-50/40 border-y border-purple-100">
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Categoría</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Concepto</th>
+                    <th className="px-3 py-2 text-center text-xs font-semibold text-gray-500 uppercase">Registros</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-purple-600 uppercase">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {gastosDirectos.map((g, i) => (
+                    <tr key={i} className="border-t border-gray-100 hover:bg-purple-50/20">
+                      <td className="px-3 py-2 text-gray-500 text-xs">{g.categoria || '—'}</td>
+                      <td className="px-3 py-2 font-medium text-gray-700">{g.concepto}</td>
+                      <td className="px-3 py-2 text-center text-gray-500">{g.cantidad}</td>
+                      <td className="px-3 py-2 text-right font-semibold text-purple-700">{fmt(g.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-purple-200 bg-purple-50/30 font-bold">
+                    <td colSpan="3" className="px-3 py-2 text-gray-600">
+                      Total gastos directos
+                    </td>
+                    <td className="px-3 py-2 text-right text-purple-700">{fmt(totalGD)}</td>
+                  </tr>
+                  <tr className="border-t border-gray-200 bg-gray-50 font-bold text-sm">
+                    <td colSpan="3" className="px-3 py-2 text-gray-700">
+                      TOTAL REAL (catálogo + directos)
+                    </td>
+                    <td className="px-3 py-2 text-right text-gray-900 text-base">{fmt(totalReal)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        )
+      })()}
     </>
   )
 }
 
 
-// ─────────────────────────────────────────────────────────────
-// Componente de Estado de Cuenta Detallado
-// ─────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// ESTADO DE CUENTA BANCARIA
+// ═══════════════════════════════════════════════════════════════════════════════
 function EstadoCuentaDetallado({ edc, fmt }) {
-  const { cuenta, saldo_anterior, transacciones, resumen, saldo_final } = edc;
-
-  let runningBalance = saldo_anterior;
+  const { cuenta, saldo_anterior, transacciones, resumen, saldo_final } = edc
+  let runningBalance = saldo_anterior
 
   return (
     <>
@@ -602,9 +1208,8 @@ function EstadoCuentaDetallado({ edc, fmt }) {
                 <td className="px-3 py-2 text-right font-medium text-gray-400 bg-blue-50/30">{fmt(saldo_anterior)}</td>
               </tr>
               {transacciones.map((t) => {
-                if (t.tipo === 'Abono') runningBalance += t.monto;
-                else runningBalance -= t.monto;
-
+                if (t.tipo === 'Abono') runningBalance += t.monto
+                else runningBalance -= t.monto
                 return (
                   <tr key={t.id} className="border-t border-gray-50 hover:bg-gray-50/50 transition-colors">
                     <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
@@ -614,45 +1219,32 @@ function EstadoCuentaDetallado({ edc, fmt }) {
                       <div className="font-medium text-gray-800">{t.concepto}</div>
                       {t.beneficiario && <div className="text-[10px] text-gray-400 uppercase tracking-tight">{t.beneficiario}</div>}
                     </td>
-                    <td className="px-3 py-2 text-gray-400 text-xs">
-                      {t.obra_nombre || '—'}
-                    </td>
-                    <td className="px-3 py-2 text-right text-red-600 font-medium">
-                      {t.tipo === 'Cargo' ? fmt(t.monto) : ''}
-                    </td>
-                    <td className="px-3 py-2 text-right text-emerald-600 font-medium">
-                      {t.tipo === 'Abono' ? fmt(t.monto) : ''}
-                    </td>
-                    <td className="px-3 py-2 text-right font-bold text-gray-700 bg-blue-50/30">
-                      {fmt(runningBalance)}
-                    </td>
+                    <td className="px-3 py-2 text-gray-400 text-xs">{t.obra_nombre || '—'}</td>
+                    <td className="px-3 py-2 text-right text-red-600 font-medium">{t.tipo === 'Cargo'  ? fmt(t.monto) : ''}</td>
+                    <td className="px-3 py-2 text-right text-emerald-600 font-medium">{t.tipo === 'Abono' ? fmt(t.monto) : ''}</td>
+                    <td className="px-3 py-2 text-right font-bold text-gray-700 bg-blue-50/30">{fmt(runningBalance)}</td>
                   </tr>
-                );
+                )
               })}
               {transacciones.length === 0 && (
-                <tr>
-                  <td colSpan="6" className="px-3 py-8 text-center text-gray-300">
-                    No hay movimientos registrados en este rango de fechas.
-                  </td>
-                </tr>
+                <tr><td colSpan="6" className="px-3 py-8 text-center text-gray-300">
+                  No hay movimientos registrados en este rango de fechas.
+                </td></tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
     </>
-  );
+  )
 }
 
-// ─────────────────────────────────────────────────────────────
-// Componente para Variación Historial de Precios
-// ─────────────────────────────────────────────────────────────
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HISTORIAL Y VARIACIÓN DE PRECIOS
+// ═══════════════════════════════════════════════════════════════════════════════
 function HistorialVariacionPrecios({ variaciones, obraNombre, fmt }) {
-  const impactoTotal = variaciones.reduce((s, v) => s + v.impacto_financiero, 0);
-
-  // Ordenar para encontrar el top de inflación
-  const topInflacion = [...variaciones].sort((a, b) => b.impacto_financiero - a.impacto_financiero).slice(0, 3);
-
+  const impactoTotal = variaciones.reduce((s, v) => s + v.impacto_financiero, 0)
   return (
     <>
       <div className="card border-l-4 mb-4 border-l-primary bg-blue-50/20">
@@ -671,14 +1263,13 @@ function HistorialVariacionPrecios({ variaciones, obraNombre, fmt }) {
         <div className="card-title mb-4">
           Detalle Analítico de Inflación — <span className="text-primary">{obraNombre}</span>
         </div>
-
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left bg-gray-50 border-y border-gray-200">
                 <th className="px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase">Cód.</th>
                 <th className="px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase">Insumo</th>
-                <th className="px-3 py-2.5 text-xs font-semibold text-blue-600 uppercase text-right border-l border-gray-200 bg-blue-50/50">Precio Estimado</th>
+                <th className="px-3 py-2.5 text-xs font-semibold text-blue-600 uppercase text-right border-l border-gray-200 bg-blue-50/50">Precio Est.</th>
                 <th className="px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase text-right">Promedio Real</th>
                 <th className="px-3 py-2.5 text-xs font-semibold text-gray-700 uppercase text-right">Pico Máximo</th>
                 <th className="px-3 py-2.5 text-xs font-semibold text-red-600 uppercase text-right border-l border-gray-200 bg-red-50/50">Impacto ($)</th>
@@ -687,22 +1278,17 @@ function HistorialVariacionPrecios({ variaciones, obraNombre, fmt }) {
             </thead>
             <tbody>
               {variaciones.map((v) => {
-                const isOverrun = v.impacto_financiero > 0;
-                const pctPico = v.precio_referencia > 0 ? ((v.precio_maximo - v.precio_referencia) / v.precio_referencia) * 100 : 0;
-                
+                const isOverrun = v.impacto_financiero > 0
+                const pctPico   = v.precio_referencia > 0 ? ((v.precio_maximo - v.precio_referencia) / v.precio_referencia) * 100 : 0
                 return (
                   <tr key={v.catalogo_id} className="border-t border-gray-100 hover:bg-gray-50">
                     <td className="px-3 py-2 text-xs font-mono text-gray-400">{v.codigo}</td>
                     <td className="px-3 py-2">
-                       <span className="font-medium text-gray-800">{v.material}</span>
-                       <span className="ml-1 text-[10px] text-gray-400">({v.cantidad_total_comprada} {v.unidad})</span>
+                      <span className="font-medium text-gray-800">{v.material}</span>
+                      <span className="ml-1 text-[10px] text-gray-400">({v.cantidad_total_comprada} {v.unidad})</span>
                     </td>
-                    <td className="px-3 py-2 text-right text-blue-700 bg-blue-50/20 border-l border-gray-100">
-                      {fmt(v.precio_referencia)}
-                    </td>
-                    <td className="px-3 py-2 text-right font-medium text-gray-700">
-                      {fmt(v.precio_promedio)}
-                    </td>
+                    <td className="px-3 py-2 text-right text-blue-700 bg-blue-50/20 border-l border-gray-100">{fmt(v.precio_referencia)}</td>
+                    <td className="px-3 py-2 text-right font-medium text-gray-700">{fmt(v.precio_promedio)}</td>
                     <td className="px-3 py-2 text-right">
                       <span className="font-bold text-gray-800">{fmt(v.precio_maximo)}</span>
                       {pctPico > 0 && (
@@ -715,23 +1301,21 @@ function HistorialVariacionPrecios({ variaciones, obraNombre, fmt }) {
                       {isOverrun ? '+' : ''}{fmt(v.impacto_financiero)}
                     </td>
                     <td className="px-3 py-2 text-xs text-gray-500 bg-red-50/20">
-                      {v.proveedor_pico} 
+                      {v.proveedor_pico}
                       {v.fecha_pico && <span className="block text-[10px] text-gray-400">{v.fecha_pico.slice(0, 10)}</span>}
                     </td>
                   </tr>
-                );
+                )
               })}
               {variaciones.length === 0 && (
-                <tr>
-                  <td colSpan="7" className="px-3 py-8 text-center text-gray-400">
-                    No se han registrado variaciones de precios (facturado vs estimado) en esta obra.
-                  </td>
-                </tr>
+                <tr><td colSpan="7" className="px-3 py-8 text-center text-gray-400">
+                  No se han registrado variaciones de precios (facturado vs estimado) en esta obra.
+                </td></tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
     </>
-  );
+  )
 }

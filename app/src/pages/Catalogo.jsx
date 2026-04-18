@@ -1,8 +1,8 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { Badge } from '../components/Badge'
 import { Loader } from '../components/Loader'
 import { fmt } from '../lib/utils'
-import { getObras, getAPI, createCatalogo, updateCatalogo, toggleCatalogo, getExplosionInsumos } from '../lib/api'
+import { getObras, getAPI, createCatalogo, updateCatalogo, toggleCatalogo, getExplosionInsumos, getCatalogoHistorial, importarCatalogo } from '../lib/api'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 const EMPTY = { codigo: '', nombre: '', descripcion: '', unidad: 'pieza', categoria: '', precio_referencia: '', cantidad_presupuestada: '', status: 'Activo' }
@@ -54,10 +54,44 @@ export default function Catalogo() {
     return m
   }, [avance])
 
-  const [q,      setQ]      = useState('')
-  const [show,   setShow]   = useState(false)
-  const [editId, setEditId] = useState(null)
-  const [form,   setForm]   = useState(EMPTY)
+  // Mapa catalogo_id → cantidad de cambios de precio registrados
+  // (se obtiene en bloque al abrir historial; para el badge consultamos todos los items)
+  // Para no saturar con N queries, solo mostramos el botón siempre y cargamos al click.
+
+  const [q,           setQ]           = useState('')
+  const [show,        setShow]        = useState(false)
+  const [editId,      setEditId]      = useState(null)
+  const [form,        setForm]        = useState(EMPTY)
+  const [historialId, setHistorialId] = useState(null) // id del concepto con historial abierto
+  const [importMsg,   setImportMsg]   = useState(null)
+  const importFileRef = useRef(null)
+
+  const mutImport = useMutation({
+    mutationFn: (fd) => importarCatalogo(fd),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['catalogo_obras', activeObraId] })
+      queryClient.invalidateQueries({ queryKey: ['explosion', activeObraId] })
+      setImportMsg(`${res.insertados} conceptos nuevos, ${res.actualizados ?? 0} actualizados.`)
+      setTimeout(() => setImportMsg(null), 5000)
+    },
+    onError: (err) => alert(err.message)
+  })
+
+  const handleImportFile = (e) => {
+    const file = e.target.files[0]
+    if (!file || !activeObraId) return
+    const fd = new FormData()
+    fd.append('excel', file)
+    fd.append('obra_id', activeObraId)
+    mutImport.mutate(fd)
+    e.target.value = ''
+  }
+
+  const { data: historialPrecios = [] } = useQuery({
+    queryKey: ['catalogo_historial', historialId],
+    queryFn: () => getCatalogoHistorial(historialId),
+    enabled: !!historialId
+  })
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['catalogo_obras', activeObraId] })
@@ -181,12 +215,13 @@ export default function Catalogo() {
       )}
 
       {/* Barra de búsqueda + botones */}
+      <input type="file" ref={importFileRef} style={{ display: 'none' }} accept=".xlsx,.xls,.csv" onChange={handleImportFile} />
       <div className="flex gap-2 mb-4 items-center flex-wrap">
         <input
           className="flex-1 min-w-[200px] text-sm px-2.5 py-[7px] border border-gray-200 rounded-md outline-none focus:border-primary transition-colors"
           value={q}
           onChange={e => setQ(e.target.value)}
-          placeholder="🔍 Buscar por nombre o código…"
+          placeholder="Buscar por nombre o código…"
         />
         {activeObraId && prods.length > 0 && (
           <button className="btn text-xs px-3 py-[7px] flex items-center gap-1.5" onClick={handleExportExcel} title="Descargar Excel de avance">
@@ -194,9 +229,22 @@ export default function Catalogo() {
           </button>
         )}
         {activeObraId && (
+          <button
+            className="btn text-xs px-3 py-[7px] flex items-center gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+            onClick={() => importFileRef.current?.click()}
+            disabled={mutImport.isPending}
+            title="Importar catálogo desde Excel"
+          >
+            {mutImport.isPending ? 'Importando...' : '↑ Importar Excel'}
+          </button>
+        )}
+        {activeObraId && (
           <button className="btn btn-primary" onClick={openNew}>+ Nuevo concepto</button>
         )}
       </div>
+      {importMsg && (
+        <div className="alert alert-success mb-4">Catálogo actualizado: {importMsg}</div>
+      )}
 
       {/* Formulario */}
       {show && (
@@ -326,7 +374,52 @@ export default function Catalogo() {
                         >
                           {p.status === 'Activo' ? 'Desact.' : 'Activar'}
                         </button>
+                        <button
+                          className="btn btn-sm text-purple-600 border-purple-200 hover:bg-purple-50"
+                          title="Historial de precios"
+                          onClick={() => setHistorialId(historialId === p.id ? null : p.id)}
+                        >
+                          {historialId === p.id ? '▲ Hist.' : '▼ Hist.'}
+                        </button>
                       </div>
+                      {/* Panel de historial inline */}
+                      {historialId === p.id && (
+                        <div className="mt-2 p-3 bg-purple-50/60 border border-purple-200 rounded-lg text-xs w-[360px]">
+                          <div className="font-semibold text-purple-700 mb-2">Historial de precios — {p.nombre}</div>
+                          {historialPrecios.length === 0 ? (
+                            <div className="text-gray-400 italic">Sin cambios registrados. El precio actual es el original de importación.</div>
+                          ) : (
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="text-gray-500 border-b border-purple-200">
+                                  <th className="text-left py-1">Fecha</th>
+                                  <th className="text-right py-1">Anterior</th>
+                                  <th className="text-right py-1">Nuevo</th>
+                                  <th className="text-right py-1">Δ%</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {historialPrecios.map(h => {
+                                  const delta = h.precio_anterior > 0
+                                    ? ((h.precio_nuevo - h.precio_anterior) / h.precio_anterior * 100).toFixed(1)
+                                    : '—'
+                                  const sube = h.precio_nuevo > h.precio_anterior
+                                  return (
+                                    <tr key={h.id} className="border-b border-purple-100">
+                                      <td className="py-1 text-gray-500">{h.fecha}</td>
+                                      <td className="py-1 text-right text-gray-600">{fmt(h.precio_anterior)}</td>
+                                      <td className={`py-1 text-right font-semibold ${sube ? 'text-red-600' : 'text-emerald-600'}`}>{fmt(h.precio_nuevo)}</td>
+                                      <td className={`py-1 text-right ${sube ? 'text-red-500' : 'text-emerald-500'}`}>
+                                        {sube ? '+' : ''}{delta}%
+                                      </td>
+                                    </tr>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 )
@@ -334,7 +427,7 @@ export default function Catalogo() {
               {filtered.length === 0 && (
                 <tr><td colSpan="11" className="text-center text-gray-400 py-8">
                   {prods.length === 0
-                    ? 'Esta obra no tiene conceptos. Agrega manualmente o importa un Excel desde la sección Obras.'
+                    ? 'Esta obra no tiene conceptos. Agrega manualmente o usa el botón "↑ Importar Excel" aquí arriba.'
                     : 'Sin resultados para la búsqueda.'}
                 </td></tr>
               )}

@@ -16,12 +16,13 @@ export function Sidebar() {
   const menuItem = [
     {id: "dashboard", label: "Dashboard", icon:LayoutDashboard, path: "/dashboard"},
     {id: "obras", label: "Obras", icon:Building2, path: "/obras"},
-    {id: "pedidos", label: "Pedidos", icon:ShoppingCart, path: "/pedidos"},
+    {id: "centro-compras", label: "Centro Compras", icon:ShoppingCart, path: "/centro-compras"},
+    {id: "pedidos", label: "Pedidos", icon:FileText, path: "/pedidos"},
     {id: "recepcion", label: "Recepción", icon:Box, path: "/recepcion"},
-    {id: "facturas", label: "Facturas", icon:FileText, path: "/facturas"},
-    {id: "pagos", label: "Pagos", icon:CreditCard, path: "/pagos"},
-    {id: "gastos", label: "Gastos", icon:Receipt, path: "/gastos"},
-    {id: "cuentas", label: "Cuentas", icon:Wallet, path: "/cuentas"},
+    {id: "facturas", label: "Facturas", icon:Receipt, path: "/facturas"},
+    {id: "pagos", label: "Pagos por Pagar", icon:CreditCard, path: "/pagos"},
+    {id: "gastos", label: "Gastos (Caja)", icon:Wallet, path: "/gastos"},
+    {id: "cuentas", label: "Cuentas", icon:Building2, path: "/cuentas"},
     {id: "catalogo", label: "Catálogo", icon:BookOpen, path: "/catalogo"},
     {id: "reportes", label: "Reportes", icon:BarChart3, path: "/reportes"},
 

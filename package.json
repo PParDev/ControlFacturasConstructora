@@ -8,6 +8,8 @@
     "dev:front": "cd app && npm run dev",
     "dev": "concurrently \"npm run dev:back\" \"npm run dev:front\"",
     "db:migrate": "node server/migrate.js",
+    "db:migrate2": "node server/migrate_v2.js",
+    "db:migrate3": "node server/migrate_v3.js",
     "db:seed": "node server/seed.js",
     "db:reset": "rm -f server/data/constructora.db && npm run db:migrate && npm run db:seed"
   },

@@ -51,9 +51,9 @@ export default function Dashboard() {
           <div className="metric-sub">{dash.facturas_pendientes_count || 0} factura(s)</div>
         </div>
         <div className="metric-card">
-          <div className="metric-label">Total Bancos</div>
+          <div className="metric-label">Disponible en Cheques</div>
           <div className="metric-value text-emerald-600">{fmt(dash.saldo_cheques || 0)}</div>
-          <div className="metric-sub">Cheques / Petty Cash</div>
+          <div className="metric-sub">Cuenta de Cheques</div>
         </div>
         <div className="metric-card border-l-4 border-primary">
           <div className="metric-label">Liquidez Neta</div>
@@ -107,7 +107,8 @@ export default function Dashboard() {
             {activeObras.map((o, i) => {
               const av = avances.find(a => a.obra_id === o.id)
               const presupuesto = av?.presupuesto_total || 0
-              const gastado = av?.gasto_real || 0
+              // Comprometido = facturas + gastos directos de caja
+              const gastado = (av?.total_facturado || 0) + (av?.gastos_directos || 0)
               const pct = presupuesto > 0 ? Math.min((gastado / presupuesto) * 100, 100) : 0
               const sobrePres = gastado > presupuesto && presupuesto > 0
               const color = BAR_COLORS[i % BAR_COLORS.length]
@@ -122,6 +123,11 @@ export default function Dashboard() {
                     <div className="text-right">
                       <span className={`font-semibold ${sobrePres ? 'text-red-600' : 'text-gray-800'}`}>{fmt(gastado)}</span>
                       <span className="text-gray-400 text-xs"> / {fmt(presupuesto)}</span>
+                      {av?.gastos_directos > 0 && (
+                        <div className="text-[10px] text-gray-400">
+                          Facturas {fmt(av.total_facturado)} + Caja {fmt(av.gastos_directos)}
+                        </div>
+                      )}
                       {presupuesto > 0 && (
                         <span className={`ml-2 text-xs font-bold px-1.5 py-0.5 rounded ${sobrePres ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'}`}>
                           {pct.toFixed(0)}%

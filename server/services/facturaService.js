@@ -15,10 +15,23 @@ export const registrarNuevaFactura = (datos) => {
     const folio_interno = generarFolioInterno()
     const fechaFinal = datos.fecha || new Date().toISOString().split('T')[0]
 
+    // Validar folio del proveedor duplicado en la misma obra
+    if (datos.folio_proveedor && datos.folio_proveedor.trim() !== '') {
+      const duplicado = db.prepare(`
+        SELECT id, folio FROM facturas
+        WHERE folio_proveedor = ? AND obra_id = ?
+      `).get(datos.folio_proveedor.trim(), datos.obra_id)
+      if (duplicado) {
+        throw new Error(`Ya existe la factura "${datos.folio_proveedor}" en esta obra (${duplicado.folio}). Verifica que no sea un duplicado.`)
+      }
+    }
+
     // Insertar factura
+    const status = datos.pago_inmediato ? 'Pagada' : 'Pendiente'
+    
     const info = db.prepare(`
-      INSERT INTO facturas (folio, folio_proveedor, obra_id, recepcion_id, proveedor, monto, fecha)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO facturas (folio, folio_proveedor, obra_id, recepcion_id, proveedor, monto, fecha, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       folio_interno,
       datos.folio_proveedor || '',
@@ -26,7 +39,8 @@ export const registrarNuevaFactura = (datos) => {
       datos.recepcion_id || null,
       datos.proveedor || '',
       datos.monto || 0,
-      fechaFinal
+      fechaFinal,
+      status
     )
 
     const facturaId = info.lastInsertRowid
@@ -46,6 +60,27 @@ export const registrarNuevaFactura = (datos) => {
         stmtDetalle.run(facturaId, d.catalogo_obra_id, d.cantidad, d.precio_unitario, d.subtotal)
         stmtHistorial.run(d.catalogo_obra_id, d.precio_unitario, fechaFinal, facturaId)
       }
+    }
+    
+    // Si se indicó pago inmediato, generar el pago y transacción
+    if (datos.pago_inmediato && datos.cuenta_id) {
+      // 1. Guardar en pagos
+      db.prepare(`
+        INSERT INTO pagos (factura_id, monto, fecha, forma_pago, referencia)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(facturaId, datos.monto, fechaFinal, datos.forma_pago || 'Transferencia', datos.referencia || 'Pago Directo')
+      
+      // 2. Transacción en cuenta bancaria
+      const concepto = `Pago directo a proveedor: ${datos.proveedor} (Factura ${folio_interno})`
+      db.prepare(`
+        INSERT INTO transacciones (cuenta_id, tipo, monto, concepto, beneficiario, obra_id, fecha)
+        VALUES (?, 'Cargo', ?, ?, ?, ?, ?)
+      `).run(datos.cuenta_id, datos.monto, concepto, datos.proveedor, datos.obra_id, fechaFinal)
+      
+      // 3. Actualizar saldo actual
+      db.prepare(`
+        UPDATE cuentas_bancarias SET saldo_actual = saldo_actual - ? WHERE id = ?
+      `).run(datos.monto, datos.cuenta_id)
     }
 
     return db.prepare('SELECT * FROM facturas WHERE id = ?').get(facturaId)

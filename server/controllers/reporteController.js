@@ -9,12 +9,16 @@ export const getReporteObra = (req, res) => {
   }
 }
 
-export const getFacturasPendientes = (req, res) => res.json(reporteService.getFacturasPendientesInfo())
-export const getRecibidoVsFacturado = (req, res) => res.json(reporteService.getRecibidoVsFacturado())
-export const getEstadoCuenta = (req, res) => res.json(reporteService.getEstadoCuenta(req.query.cuenta_id, req.query.desde, req.query.hasta))
-export const getExplosionInsumos = (req, res) => res.json(reporteService.getExplosionInsumos(req.params.id))
-export const getAvancesObras = (req, res) => res.json(reporteService.getAvancesObras())
-export const getHistorialVariaciones = (req, res) => res.json(reporteService.getHistorialVariaciones(req.params.id))
+export const getFacturasPendientes    = (req, res) => res.json(reporteService.getFacturasPendientesInfo())
+export const getRecibidoVsFacturado   = (req, res) => res.json(reporteService.getRecibidoVsFacturado())
+export const getEstadoCuenta          = (req, res) => res.json(reporteService.getEstadoCuenta(req.query.cuenta_id, req.query.desde, req.query.hasta))
+export const getExplosionInsumos      = (req, res) => res.json(reporteService.getExplosionInsumos(req.params.id, req.query.hasta || null))
+export const getAvancesObras          = (req, res) => res.json(reporteService.getAvancesObrasDetallado())
+export const getHistorialVariaciones  = (req, res) => res.json(reporteService.getHistorialVariaciones(req.params.id))
+export const getFlujoCaja             = (req, res) => res.json(reporteService.getFlujoCaja())
+export const getGastoMensual          = (req, res) => res.json(reporteService.getGastoMensual(req.query.obra_id || null))
+export const getRankingProveedores    = (req, res) => res.json(reporteService.getRankingProveedores(req.query.obra_id || null))
+export const getGastosDirectosObra    = (req, res) => res.json(reporteService.getGastosDirectosObra(req.params.obra_id))
 
 export const exportarExplosionExcel = (req, res) => {
   try {

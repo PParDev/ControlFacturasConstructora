@@ -11,6 +11,8 @@ import Gastos from './pages/Gastos'
 import Cuentas from './pages/Cuentas'
 import Catalogo from './pages/Catalogo'
 import Reportes from './pages/Reportes'
+import CentroCompras from './pages/CentroCompras'
+import ObraDetalle from './pages/ObraDetalle'
 
 
 export default function App() {
@@ -22,6 +24,8 @@ export default function App() {
           <Route path="/" element={<Navigate to="/dashboard" replace/>} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/obras" element={<Obras />} />
+          <Route path="/obras/:id" element={<ObraDetalle />} />
+          <Route path="/centro-compras" element={<CentroCompras />} />
           <Route path="/pedidos" element={<Pedidos />} />
           <Route path="/recepcion" element={<Recepcion />} />
           <Route path="/facturas" element={<Facturas />} />

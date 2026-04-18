@@ -16,6 +16,7 @@ db.exec(`
     fecha_inicio     TEXT             DEFAULT '',
     fecha_cierre     TEXT             DEFAULT '',
     status           TEXT    NOT NULL DEFAULT 'Activa',
+    estado           TEXT             DEFAULT 'Activa',
     gasto_acumulado  REAL    NOT NULL DEFAULT 0,
     created_at       TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
   );
@@ -60,6 +61,7 @@ db.exec(`
     unidad    TEXT             DEFAULT '',
     notas     TEXT             DEFAULT '',
     fecha     TEXT    NOT NULL DEFAULT (date('now','localtime')),
+    catalogo_obra_id INTEGER          REFERENCES catalogo_obras(id),
     status    TEXT    NOT NULL DEFAULT 'Pendiente'
   );
 
@@ -68,7 +70,7 @@ db.exec(`
   -- ───────────────────────────────────────────────────────────
   CREATE TABLE IF NOT EXISTS recepciones (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    folio             TEXT    NOT NULL UNIQUE,
+    folio             TEXT    NOT NULL,
     obra_id           INTEGER NOT NULL REFERENCES obras(id),
     pedido_id         INTEGER          REFERENCES pedidos(id),
     tipo_flujo        TEXT    NOT NULL DEFAULT 'sin_pedido',
@@ -79,7 +81,8 @@ db.exec(`
     faltante          REAL             DEFAULT 0,
     entrego           TEXT             DEFAULT '',
     recibio           TEXT             DEFAULT '',
-    fecha             TEXT    NOT NULL DEFAULT (date('now','localtime'))
+    fecha             TEXT    NOT NULL DEFAULT (date('now','localtime')),
+    catalogo_obra_id  INTEGER          REFERENCES catalogo_obras(id)
   );
 
   -- ───────────────────────────────────────────────────────────

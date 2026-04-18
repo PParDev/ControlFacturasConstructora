@@ -46,7 +46,7 @@ export const importarCatalogo = (req, res) => {
     const colUnidad   = findCol('unidad', 'u.m.', 'um')
     const colCantidad = findCol('volumen', 'cantidad', 'cant', 'vol')
     const colPrecio   = findCol('costo unitario', 'precio unitario', 'precio', 'costo')
-    const colCodigo   = findCol('codigo', 'código', 'clave', 'id')
+    const colCodigo   = findCol('codigo', 'código', 'clave')
 
     // Si no encontramos columna de nombre y cantidad, usar formato posicional Structura
     // Structura: col0=nombre, col2=unidad, col3=volumen, col4=costo unitario
@@ -70,13 +70,11 @@ export const importarCatalogo = (req, res) => {
           unidad   = String(row[2] ?? '').trim()
           cantidad = Number(row[3])
           precio   = Number(row[4])
-          codigo   = ''
         } else {
           nombre   = String(row[colNombre]   ?? '').trim()
           unidad   = colUnidad   !== -1 ? String(row[colUnidad]   ?? '').trim() : 'pza'
           cantidad = colCantidad !== -1 ? Number(row[colCantidad] ?? 0) : 0
           precio   = colPrecio   !== -1 ? Number(row[colPrecio]   ?? 0) : 0
-          codigo   = colCodigo   !== -1 ? String(row[colCodigo]   ?? '').trim() : ''
         }
 
         // Omitir filas sin nombre, sin cantidad válida, o filas de subtotales
@@ -84,7 +82,7 @@ export const importarCatalogo = (req, res) => {
         if (isNaN(cantidad) || cantidad <= 0)  { omitidos++; continue }
         if (isNaN(precio)) precio = 0
 
-        if (!codigo) codigo = `I-${String(insertados + 1).padStart(3, '0')}`
+        codigo = String(insertados + 1).padStart(3, '0')
 
         stmt.run(obra_id, codigo, nombre, unidad || 'pza', cantidad, precio)
         insertados++

@@ -64,3 +64,28 @@ export const getResumen = () => {
     deuda_credito: sumaCreditos
   }
 }
+
+export const updateSaldoInicial = (id, saldo_inicial) => {
+  return db.transaction(() => {
+    // Update initial balance
+    db.prepare('UPDATE cuentas_bancarias SET saldo_inicial = ? WHERE id = ?').run(saldo_inicial, id)
+    
+    // Recalculate balance
+    const cuenta = db.prepare('SELECT saldo_inicial, tipo FROM cuentas_bancarias WHERE id = ?').get(id)
+    const trans = db.prepare('SELECT sum(monto) as total FROM transacciones WHERE cuenta_id = ? AND tipo = ?')
+    
+    const cargos = trans.get(id, 'Cargo').total || 0
+    const abonos = trans.get(id, 'Abono').total || 0
+    
+    let saldoActual = cuenta.saldo_inicial
+    if (cuenta.tipo === 'Crédito') {
+      saldoActual = cuenta.saldo_inicial + cargos - abonos
+    } else {
+      saldoActual = cuenta.saldo_inicial + abonos - cargos
+    }
+
+    db.prepare('UPDATE cuentas_bancarias SET saldo_actual = ? WHERE id = ?').run(saldoActual, id)
+    
+    return db.prepare('SELECT * FROM cuentas_bancarias WHERE id = ?').get(id)
+  })()
+}

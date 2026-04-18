@@ -20,25 +20,36 @@ export const createPago = (datos) => {
   if (!factura) throw new Error('Factura no encontrada')
   if (factura.status === 'Pagada') throw new Error('La factura ya está pagada')
 
-  const fechaFinal = datos.fecha || new Date().toISOString().split('T')[0]
-  const formaStr = datos.forma_pago || datos.forma || 'Transferencia'
+  const fechaFinal  = datos.fecha     || new Date().toISOString().split('T')[0]
+  const formaStr    = datos.forma_pago || datos.forma || 'Transferencia'
+  const montoPago   = factura.monto   // Siempre se paga el monto completo
 
-  const pag = db.transaction(() => {
+  return db.transaction(() => {
+    // 1. Registrar el pago
     const info = db.prepare(`
       INSERT INTO pagos (factura_id, monto, forma_pago, referencia, fecha)
       VALUES (?, ?, ?, ?, ?)
-    `).run(datos.factura_id, datos.monto, formaStr, datos.referencia || '', fechaFinal)
+    `).run(datos.factura_id, montoPago, formaStr, datos.referencia || '', fechaFinal)
 
-    // Marca la factura como Pagada
+    // 2. Marcar factura como Pagada
     db.prepare("UPDATE facturas SET status = 'Pagada' WHERE id = ?").run(datos.factura_id)
 
-    // Suma al gasto acumulado de la obra
-    db.prepare(`
-      UPDATE obras SET gasto_acumulado = gasto_acumulado + ? WHERE id = ?
-    `).run(datos.monto, factura.obra_id)
+    // 3. Acumular en gasto de la obra
+    db.prepare('UPDATE obras SET gasto_acumulado = gasto_acumulado + ? WHERE id = ?')
+      .run(montoPago, factura.obra_id)
+
+    // 4. Si se indicó cuenta, registrar la salida de dinero del banco
+    if (datos.cuenta_id) {
+      const concepto = `Pago factura ${factura.folio} — ${factura.proveedor}`
+      db.prepare(`
+        INSERT INTO transacciones (cuenta_id, tipo, monto, concepto, beneficiario, obra_id, fecha)
+        VALUES (?, 'Cargo', ?, ?, ?, ?, ?)
+      `).run(datos.cuenta_id, montoPago, concepto, factura.proveedor, factura.obra_id, fechaFinal)
+
+      db.prepare('UPDATE cuentas_bancarias SET saldo_actual = saldo_actual - ? WHERE id = ?')
+        .run(montoPago, datos.cuenta_id)
+    }
 
     return db.prepare('SELECT * FROM pagos WHERE id = ?').get(info.lastInsertRowid)
   })()
-
-  return pag
 }

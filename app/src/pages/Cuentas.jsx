@@ -1,11 +1,9 @@
 import { useState } from 'react'
 import { Loader } from '../components/Loader'
 import { fmt, today } from '../lib/utils'
-import { getCuentas, getTransacciones, createTransaccion, getObras } from '../lib/api'
+import { getCuentas, getTransacciones, createTransaccion, getObras, updateSaldoInicial } from '../lib/api'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
-// Cuentas fijas del sistema: Cheques (id=1) y Tarjeta Crédito (id=2) según seed
-// El tab activo indica cuál cuenta bancaria estamos viendo
 export default function Cuentas() {
   const queryClient = useQueryClient()
   const [activeId, setActiveId] = useState(null)
@@ -16,12 +14,12 @@ export default function Cuentas() {
   const { data: obras = [] } = useQuery({ queryKey: ['obras'], queryFn: getObras })
 
   const cuentaActiva = cuentas.find(c => c.id === activeId) || cuentas[0]
-  const activeTabId = cuentaActiva?.id || null
+  const activeTabId  = cuentaActiva?.id || null
 
   const { data: transacciones = [], isLoading: loadTrans } = useQuery({
     queryKey: ['transacciones', activeTabId],
-    queryFn: () => getTransacciones(activeTabId),
-    enabled: !!activeTabId
+    queryFn:  () => getTransacciones(activeTabId),
+    enabled:  !!activeTabId
   })
 
   const mutacion = useMutation({
@@ -47,18 +45,15 @@ export default function Cuentas() {
   if (loadCuentas) return <div><div className="page-title">Cuentas</div><Loader /></div>
 
   const esCredito = cuentaActiva?.tipo === 'Crédito'
-
-  // Métricas resumen
   const disponible = cuentas.filter(c => c.tipo !== 'Crédito').reduce((s, c) => s + c.saldo_actual, 0)
-  const deuda = cuentas.filter(c => c.tipo === 'Crédito').reduce((s, c) => s + c.saldo_actual, 0)
+  const deuda      = cuentas.filter(c => c.tipo === 'Crédito').reduce((s, c) => s + c.saldo_actual, 0)
 
-  // Totales del historial actual
   const totalCargos = transacciones.filter(t => t.tipo === 'Cargo').reduce((s, t) => s + t.monto, 0)
   const totalAbonos = transacciones.filter(t => t.tipo === 'Abono').reduce((s, t) => s + t.monto, 0)
 
   return (
     <div>
-      <div className="page-title">Cuentas bancarias</div>
+      <div className="page-title">Cuentas</div>
       <div className="page-sub">Estado de cuenta y registro de movimientos</div>
 
       {/* Métricas globales */}
@@ -66,7 +61,7 @@ export default function Cuentas() {
         <div className="metric-card">
           <div className="metric-label">Saldo disponible total</div>
           <div className="metric-value text-emerald-600">{fmt(disponible)}</div>
-          <div className="metric-sub">Cheques + Caja Chica</div>
+          <div className="metric-sub">Cuenta de cheques</div>
         </div>
         <div className="metric-card">
           <div className="metric-label">Deuda en crédito</div>
@@ -83,7 +78,7 @@ export default function Cuentas() {
       </div>
 
       {/* Tabs por cuenta */}
-      <div className="flex gap-2 mb-4 flex-wrap">
+      <div className="flex gap-2 mb-4">
         {cuentas.map(c => (
           <button
             key={c.id}
@@ -96,6 +91,9 @@ export default function Cuentas() {
             </span>
           </button>
         ))}
+        {cuentas.length === 0 && (
+          <p className="text-sm text-gray-400">No hay cuentas registradas. Contacta al administrador para configurarlas.</p>
+        )}
       </div>
 
       {cuentaActiva && (
@@ -104,7 +102,31 @@ export default function Cuentas() {
           <div className="saldo-box mb-4">
             <div>
               <div className="text-xs text-gray-500 mb-0.5">Saldo inicial</div>
-              <div className="text-lg font-semibold text-gray-700">{fmt(cuentaActiva.saldo_inicial)}</div>
+              <div className="flex items-center gap-2">
+                <div className="text-lg font-semibold text-gray-700">{fmt(cuentaActiva.saldo_inicial)}</div>
+                <button
+                  className="text-xs text-primary hover:underline bg-blue-50 px-2 py-1 rounded"
+                  onClick={async () => {
+                    const val = prompt('Nuevo saldo inicial para ' + cuentaActiva.nombre + ':', cuentaActiva.saldo_inicial)
+                    if (val !== null && val.trim() !== '') {
+                      const num = parseFloat(val)
+                      if (!isNaN(num)) {
+                        try {
+                          await updateSaldoInicial(cuentaActiva.id, num)
+                          queryClient.invalidateQueries({ queryKey: ['cuentas'] })
+                          queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+                        } catch (err) {
+                          alert(err.message)
+                        }
+                      } else {
+                        alert('Valor inválido')
+                      }
+                    }
+                  }}
+                >
+                  Editar
+                </button>
+              </div>
               <div className="text-xs text-gray-400 mt-1">{cuentaActiva.tipo}</div>
             </div>
             <div className="text-right">

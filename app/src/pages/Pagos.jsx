@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { Banknote } from 'lucide-react'
 import { Badge } from '../components/Badge'
 import { FlowIndicator } from '../components/FlowIndicator'
 import { Loader } from '../components/Loader'
+import { Paginador } from '../components/Paginador'
 import { fmt, today } from '../lib/utils'
-import { getPagos, createPago, getFacturas, getObras } from '../lib/api'
+import { getPagos, createPago, getFacturas, getObras, getCuentas } from '../lib/api'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useLocation } from 'react-router-dom'
 
 const FLOW = [
   { label: 'Recepción', done: true },
@@ -14,31 +17,52 @@ const FLOW = [
 
 export default function Pagos() {
   const queryClient = useQueryClient()
+  const location = useLocation()
 
   const { data: pagos = [], isLoading: loadPagos } = useQuery({ queryKey: ['pagos'], queryFn: getPagos })
   const { data: allFacts = [], isLoading: loadFacts } = useQuery({ queryKey: ['facturas'], queryFn: getFacturas })
-  const { data: obras = [] } = useQuery({ queryKey: ['obras'], queryFn: getObras })
+  const { data: cuentas = [] } = useQuery({ queryKey: ['cuentas'], queryFn: getCuentas })
 
   const [factura_id, setFacturaId] = useState('')
-  const [monto, setMonto] = useState('')
-  const [forma, setForma] = useState('Transferencia')
+  const [cuenta_id, setCuentaId] = useState('')
   const [referencia, setReferencia] = useState('')
   const [fecha, setFecha] = useState(today())
   const [saved, setSaved] = useState(false)
+  const [page, setPage] = useState(1)
+  const PER_PAGE = 10
 
   const pendientes = allFacts.filter(f => f.status === 'Pendiente')
   const actFac = pendientes.find(f => f.id == factura_id) || pendientes[0]
+
+  // Set default cuenta (cheques)
+  useEffect(() => {
+    if (cuentas.length > 0 && !cuenta_id) {
+      const cheques = cuentas.find(c => c.tipo === 'Cheques') || cuentas[0]
+      setCuentaId(String(cheques.id))
+    }
+  }, [cuentas, cuenta_id])
+
+  useEffect(() => {
+    if (pendientes.length > 0 && location.state?.factura_id && factura_id !== location.state.factura_id) {
+      const selected = pendientes.find(f => f.id == location.state.factura_id)
+      if (selected) {
+        setFacturaId(selected.id)
+        window.history.replaceState({}, document.title)
+      }
+    }
+  }, [pendientes, location.state, factura_id])
 
   const mutation = useMutation({
     mutationFn: createPago,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pagos'] })
       queryClient.invalidateQueries({ queryKey: ['facturas'] })
+      queryClient.invalidateQueries({ queryKey: ['cuentas'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       setFacturaId('')
-      setMonto('')
       setReferencia('')
       setSaved(true)
+
       setTimeout(() => setSaved(false), 4000)
     },
     onError: err => alert(err.message)
@@ -46,10 +70,13 @@ export default function Pagos() {
 
   const save = () => {
     const fid = parseInt(factura_id || actFac?.id)
-    const m = parseFloat(monto)
     if (!fid) return alert('Selecciona una factura')
-    if (!m || m <= 0) return alert('Ingresa el monto pagado')
-    mutation.mutate({ factura_id: fid, monto: m, forma, referencia, fecha })
+    mutation.mutate({
+      factura_id: fid,
+      referencia,
+      fecha,
+      cuenta_id: cuenta_id ? parseInt(cuenta_id) : null
+    })
   }
 
   const totalPendiente = pendientes.reduce((s, f) => s + f.monto, 0)
@@ -76,7 +103,7 @@ export default function Pagos() {
                 Total por liquidar: <strong>{fmt(totalPendiente)}</strong>
               </div>
             </div>
-            <div className="text-2xl">💰</div>
+            <Banknote size={24} className="text-yellow-600 shrink-0" />
           </div>
         </div>
       )}
@@ -91,56 +118,58 @@ export default function Pagos() {
           <>
             {/* Selección de factura */}
             <div className="mb-4">
-              <label className="field-label block mb-2 text-sm font-medium text-gray-700">Selecciona la factura a pagar</label>
-              <select 
-                value={factura_id} 
-                onChange={(e) => {
-                  const fid = e.target.value;
-                  setFacturaId(fid);
-                  const selected = pendientes.find(f => f.id == fid);
-                  if (selected) setMonto(selected.monto.toString());
-                }}
-                className="w-full border-gray-200 focus:border-primary focus:ring-primary rounded-lg transition-colors"
-                disabled={pendientes.length === 0}
-              >
-                <option value="" disabled>Selecciona una factura pendiente...</option>
-                {pendientes.map(f => (
-                  <option key={f.id} value={f.id}>
-                    {f.folio} | {f.proveedor} | {f.obra_nombre} — {fmt(f.monto)}
-                  </option>
-                ))}
-              </select>
-              {factura_id && actFac && (
-                <div className="mt-2 p-3 bg-blue-50/50 rounded-lg border border-blue-100 flex justify-between items-center animate-in fade-in slide-in-from-top-1">
-                  <div>
-                    <div className="text-xs text-blue-600 font-semibold uppercase">Factura Seleccionada</div>
-                    <div className="text-sm font-bold text-gray-800">{actFac.folio} · {actFac.proveedor}</div>
-                    <div className="text-[11px] text-gray-500">{actFac.obra_nombre} · {actFac.fecha}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs text-gray-400">Total a pagar</div>
-                    <div className="text-lg font-black text-primary">{fmt(actFac.monto)}</div>
-                  </div>
-                </div>
-              )}
+              <label className="block mb-2 text-sm font-medium text-gray-700">Selecciona la factura a pagar</label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {pendientes.map(f => {
+                  const selected = String(f.id) === String(factura_id) || (!factura_id && f.id === actFac?.id)
+                  return (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setFacturaId(String(f.id))}
+                      className={`text-left p-3 rounded-lg border-2 transition-all ${
+                        selected
+                          ? 'border-primary bg-primary/5 shadow-sm'
+                          : 'border-gray-200 bg-white hover:border-primary/40 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <span className={`text-xs font-bold font-mono ${selected ? 'text-primary' : 'text-gray-500'}`}>{f.folio}</span>
+                            {selected && <span className="text-[10px] bg-primary text-white px-1.5 py-0.5 rounded-full font-semibold">Seleccionada</span>}
+                          </div>
+                          <div className="text-sm font-semibold text-gray-900 truncate">{f.proveedor}</div>
+                          <div className="text-xs text-gray-400 truncate">{f.obra_nombre} · {f.fecha}</div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="text-xs text-gray-400 mb-0.5">Por pagar</div>
+                          <div className={`text-base font-black ${selected ? 'text-primary' : 'text-gray-700'}`}>{fmt(f.monto)}</div>
+                        </div>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="field">
-                <label>Monto pagado</label>
-                <input type="number" value={monto} onChange={e => setMonto(e.target.value)}
-                  placeholder={actFac ? fmt(actFac.monto) : '0'} />
-                {actFac && parseFloat(monto) > 0 && parseFloat(monto) < actFac.monto && (
-                  <div className="text-xs text-orange-600 mt-0.5">⚠ Pago parcial — quedará {fmt(actFac.monto - parseFloat(monto))} pendiente</div>
-                )}
+            {/* Monto a pagar — solo informativo */}
+            {actFac && (
+              <div className="flex items-center gap-3 mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                <div className="text-sm text-emerald-700">Monto a pagar:</div>
+                <div className="text-xl font-black text-emerald-700">{fmt(actFac.monto)}</div>
+                <div className="text-xs text-emerald-600 ml-auto">(pago completo de la factura)</div>
               </div>
+            )}
+
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div className="field">
-                <label>Forma de pago</label>
-                <select value={forma} onChange={e => setForma(e.target.value)}>
-                  <option>Transferencia</option>
-                  <option>Cheque</option>
-                  <option>Efectivo</option>
-                  <option>Tarjeta Crédito</option>
+                <label>Cargo a cuenta</label>
+                <select value={cuenta_id} onChange={e => setCuentaId(e.target.value)}>
+                  <option value="">— Sin afectar cuenta —</option>
+                  {cuentas.map(c => (
+                    <option key={c.id} value={c.id}>{c.nombre} ({c.tipo})</option>
+                  ))}
                 </select>
               </div>
               <div className="field">
@@ -157,7 +186,7 @@ export default function Pagos() {
 
             <div className="mt-4">
               <button className="btn btn-primary" onClick={save} disabled={mutation.isPending || pendientes.length === 0}>
-                {mutation.isPending ? 'Registrando...' : 'Confirmar Pago'}
+                {mutation.isPending ? 'Registrando...' : `Confirmar Pago${actFac ? ' — ' + fmt(actFac.monto) : ''}`}
               </button>
             </div>
           </>
@@ -166,36 +195,39 @@ export default function Pagos() {
 
       {/* Historial */}
       <div className="card">
-        <div className="card-title">Historial de pagos</div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="card-title mb-0">Historial de pagos</div>
+          <div className="text-xs text-gray-400">{pagos.length} en total</div>
+        </div>
         <div className="overflow-x-auto">
           <table>
             <thead>
               <tr>
                 <th>Fecha</th><th>Folio Factura</th><th>Proveedor</th>
-                <th>Obra</th><th className="text-right">Monto</th><th>Forma</th><th>Estado</th>
+                <th>Obra</th><th className="text-right">Monto</th><th>Estado</th>
               </tr>
             </thead>
             <tbody>
-              {pagos.map(p => {
+              {pagos.slice((page - 1) * PER_PAGE, page * PER_PAGE).map(p => {
                 const fac = allFacts.find(f => f.id === p.factura_id)
                 return (
                   <tr key={p.id}>
                     <td className="text-sm">{p.fecha}</td>
-                    <td className="font-mono text-xs text-gray-500">{fac?.folio || `#${p.factura_id}`}</td>
-                    <td className="font-medium text-gray-800">{fac?.proveedor || '—'}</td>
-                    <td className="text-gray-600 text-sm">{fac?.obra_nombre || obras.find(o => o.id === fac?.obra_id)?.nombre || '—'}</td>
+                    <td className="font-mono text-xs text-gray-500">{fac?.folio || p.folio || `#${p.factura_id}`}</td>
+                    <td className="font-medium text-gray-800">{fac?.proveedor || p.proveedor || '—'}</td>
+                    <td className="text-gray-600 text-sm">{fac?.obra_nombre || p.obra_nombre || '—'}</td>
                     <td className="text-right font-semibold text-emerald-700">{fmt(p.monto)}</td>
-                    <td className="text-gray-600 text-sm">{p.forma || p.forma_pago}</td>
                     <td><Badge s="Pagada" /></td>
                   </tr>
                 )
               })}
               {pagos.length === 0 && (
-                <tr><td colSpan="7" className="text-center text-gray-400">No hay pagos registrados</td></tr>
+                <tr><td colSpan="6" className="text-center text-gray-400">No hay pagos registrados</td></tr>
               )}
             </tbody>
           </table>
         </div>
+        <Paginador total={pagos.length} page={page} perPage={PER_PAGE} onChange={p => setPage(p)} />
       </div>
     </div>
   )

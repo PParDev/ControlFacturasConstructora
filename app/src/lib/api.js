@@ -10,7 +10,10 @@ export async function postAPI(endpoint, data) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   })
-  if (!res.ok) throw new Error('Error al guardar datos: ' + res.statusText)
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}))
+    throw new Error(errData.error || errData.detalles?.[0]?.message || 'Error al guardar datos: ' + res.statusText)
+  }
   return res.json()
 }
 
@@ -70,8 +73,11 @@ export const createPedido = (data) => postAPI('/api/pedidos', data)
 export const createPedidoBulk = (data) => postAPI('/api/pedidos/bulk', data)
 
 // Recepciones
-export const getRecepciones = () => getAPI('/api/recepciones')
-export const createRecepcion = (data) => postAPI('/api/recepciones', data)
+export const getRecepciones           = ()   => getAPI('/api/recepciones')
+export const getRecepcionesPendientes = ()   => getAPI('/api/recepciones/pendientes')
+export const getRecepcion             = (id) => getAPI(`/api/recepciones/${id}`)
+export const createRecepcion          = (data) => postAPI('/api/recepciones', data)
+export const createRecepcionBulk      = (data) => postAPI('/api/recepciones/bulk', data)
 
 // Pagos
 export const getPagos = () => getAPI('/api/pagos')
@@ -82,6 +88,8 @@ export const getCuentas = () => getAPI('/api/cuentas')
 export const createCuenta = (data) => postAPI('/api/cuentas', data)
 export const getTransacciones = (id) => getAPI(`/api/cuentas/${id}/transacciones`)
 export const createTransaccion = (id, data) => postAPI(`/api/cuentas/${id}/transacciones`, data)
+export const updateSaldoInicial = (id, saldo_inicial) => putAPI(`/api/cuentas/${id}/saldo-inicial`, { saldo_inicial })
+
 
 // Catalogo
 export const getCatalogo = (obra_id) => {
@@ -97,7 +105,11 @@ export const toggleCatalogo = (id) => patchAPI(`/api/catalogo/${id}/toggle`)
 export const getDashboard = () => getAPI('/api/dashboard')
 
 // Reportes
-export const getExplosionInsumos = (obra_id) => getAPI(`/api/reportes/explosion-insumos/${obra_id}`)
+export const getExplosionInsumos = (obra_id, hasta) => {
+  let url = `/api/reportes/explosion-insumos/${obra_id}`
+  if (hasta) url += `?hasta=${hasta}`
+  return getAPI(url)
+}
 export const getHistorialVariaciones = (obra_id) => getAPI(`/api/reportes/historial-variaciones/${obra_id}`)
 export const getEstadoCuenta = (cuenta_id, desde, hasta) => {
   let url = `/api/reportes/estado-cuenta?cuenta_id=${cuenta_id}`
@@ -105,6 +117,22 @@ export const getEstadoCuenta = (cuenta_id, desde, hasta) => {
   if (hasta) url += `&hasta=${hasta}`
   return getAPI(url)
 }
+export const getAvancesObras        = ()        => getAPI('/api/reportes/avances-obras')
+export const getFlujoCaja           = ()        => getAPI('/api/reportes/flujo-caja')
+export const getGastoMensual        = (obra_id) => {
+  let url = '/api/reportes/gasto-mensual'
+  if (obra_id) url += `?obra_id=${obra_id}`
+  return getAPI(url)
+}
+export const getRankingProveedores  = (obra_id) => {
+  let url = '/api/reportes/ranking-proveedores'
+  if (obra_id) url += `?obra_id=${obra_id}`
+  return getAPI(url)
+}
+export const getGastosDirectos = (obra_id) => getAPI(`/api/reportes/gastos-directos/${obra_id}`)
+
+// Historial de precios del catálogo
+export const getCatalogoHistorial = (id) => getAPI(`/api/catalogo/${id}/historial`)
 
 // Importador
 export const importarCatalogo = (formData) => uploadAPI('/api/importador', formData)
