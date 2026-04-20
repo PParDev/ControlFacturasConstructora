@@ -96,6 +96,8 @@ export const getEstadoCuenta = (cuenta_id, desde, hasta) => {
 }
 
 export const getExplosionInsumos = (obra_id, hasta) => {
+  // The SELECT sums factured quantities + direct gastos linked to catalog items.
+  // cant_comprada = only from invoices (unit qty); costo_real = invoices + direct gastos (financial total)
   const selectBase = `
     SELECT
       co.id,
@@ -107,16 +109,16 @@ export const getExplosionInsumos = (obra_id, hasta) => {
       co.precio_referencia as precio_estimado,
       ROUND(co.cantidad_presupuestada * co.precio_referencia, 2) as presupuesto_total,
       COALESCE(SUM(df.cantidad), 0) as cant_comprada,
-      COALESCE(SUM(df.subtotal), 0) as costo_real,
+      COALESCE(SUM(df.subtotal), 0) + COALESCE(SUM(g.monto), 0) as costo_real,
       CASE
         WHEN COALESCE(SUM(df.cantidad), 0) > 0
-        THEN ROUND(COALESCE(SUM(df.subtotal), 0) / SUM(df.cantidad), 4)
+        THEN ROUND((COALESCE(SUM(df.subtotal), 0) + COALESCE(SUM(g.monto), 0)) / SUM(df.cantidad), 4)
         ELSE 0
-      END as precio_real_prom
+      END as precio_real_prom,
+      COALESCE(SUM(g.monto), 0) as costo_gasto_directo
     FROM catalogo_obras co
   `
 
-  // Separar en dos queries parametrizadas para evitar interpolación directa de variables en SQL
   if (hasta) {
     return db.prepare(`
       ${selectBase}
@@ -125,15 +127,19 @@ export const getExplosionInsumos = (obra_id, hasta) => {
         JOIN facturas f2 ON f2.id = df2.factura_id
         WHERE f2.fecha <= ?
       ) df ON df.catalogo_obra_id = co.id
+      LEFT JOIN (
+        SELECT * FROM gastos WHERE catalogo_obra_id IS NOT NULL AND fecha <= ?
+      ) g ON g.catalogo_obra_id = co.id
       WHERE co.obra_id = ?
       GROUP BY co.id
       ORDER BY co.codigo ASC
-    `).all(hasta, obra_id)
+    `).all(hasta, hasta, obra_id)
   }
 
   return db.prepare(`
     ${selectBase}
     LEFT JOIN detalles_factura df ON df.catalogo_obra_id = co.id
+    LEFT JOIN gastos g ON g.catalogo_obra_id = co.id
     WHERE co.obra_id = ?
     GROUP BY co.id
     ORDER BY co.codigo ASC
@@ -283,6 +289,156 @@ export const getRankingProveedores = (obra_id) => {
   if (obra_id) { sql += ' WHERE f.obra_id = ?'; params.push(obra_id) }
   sql += ' GROUP BY f.proveedor ORDER BY total_facturado DESC'
   return db.prepare(sql).all(...params)
+}
+
+export const getHistorialPreciosObra = (obra_id) => {
+  if (!obra_id) throw new Error('Se requiere el ID de la obra')
+
+  const insumos = db.prepare(`
+    SELECT
+      co.id            as catalogo_id,
+      co.codigo,
+      co.nombre,
+      co.unidad,
+      co.precio_referencia,
+      co.cantidad_presupuestada,
+      COUNT(df.id)                                                 as num_compras,
+      COALESCE(SUM(df.cantidad), 0)                                as cant_comprada,
+      COALESCE(SUM(df.subtotal), 0)                                as costo_total,
+      MIN(df.precio_unitario)                                      as precio_min,
+      MAX(df.precio_unitario)                                      as precio_max,
+      CASE WHEN SUM(df.cantidad) > 0
+           THEN SUM(df.subtotal) / SUM(df.cantidad)
+           ELSE NULL END                                           as precio_prom
+    FROM catalogo_obras co
+    LEFT JOIN detalles_factura df ON df.catalogo_obra_id = co.id
+    LEFT JOIN facturas f          ON f.id = df.factura_id
+    WHERE co.obra_id = ?
+    GROUP BY co.id
+    ORDER BY co.codigo ASC
+  `).all(obra_id)
+
+  const ultimoStmt = db.prepare(`
+    SELECT df.precio_unitario, f.fecha, f.proveedor
+    FROM detalles_factura df
+    JOIN facturas f ON f.id = df.factura_id
+    WHERE df.catalogo_obra_id = ?
+    ORDER BY f.fecha DESC, f.id DESC
+    LIMIT 1
+  `)
+
+  const sparkStmt = db.prepare(`
+    SELECT f.fecha, df.precio_unitario
+    FROM detalles_factura df
+    JOIN facturas f ON f.id = df.factura_id
+    WHERE df.catalogo_obra_id = ?
+    ORDER BY f.fecha ASC, f.id ASC
+  `)
+
+  return insumos.map(i => {
+    const ult = ultimoStmt.get(i.catalogo_id)
+    const spark = sparkStmt.all(i.catalogo_id)
+    const precio_ref = i.precio_referencia || 0
+    const cant_pres = i.cantidad_presupuestada || 0
+    const precio_prom = i.precio_prom || 0
+    const cant_comprada = i.cant_comprada || 0
+
+    // Atribución de discrepancia: ¿el sobre/sub-costo viene del PRECIO o de la CANTIDAD?
+    const impacto_precio    = (precio_prom - precio_ref) * cant_comprada
+    const impacto_cantidad  = (cant_comprada - cant_pres) * precio_ref
+    const variacion_pct     = precio_ref > 0 ? ((precio_prom - precio_ref) / precio_ref) * 100 : 0
+
+    return {
+      ...i,
+      ultimo_precio:     ult?.precio_unitario ?? null,
+      ultima_fecha:      ult?.fecha           ?? null,
+      ultimo_proveedor:  ult?.proveedor       ?? null,
+      impacto_precio,
+      impacto_cantidad,
+      variacion_pct,
+      sparkline: spark
+    }
+  })
+}
+
+export const getHistorialPreciosInsumo = (obra_id, catalogo_id) => {
+  const insumo = db.prepare(`
+    SELECT * FROM catalogo_obras WHERE id = ? AND obra_id = ?
+  `).get(catalogo_id, obra_id)
+  if (!insumo) throw new Error('Insumo no encontrado en esta obra')
+
+  const compras = db.prepare(`
+    SELECT
+      df.id            as detalle_id,
+      f.id             as factura_id,
+      f.folio,
+      f.folio_proveedor,
+      f.proveedor,
+      f.fecha,
+      df.cantidad,
+      df.precio_unitario,
+      df.subtotal
+    FROM detalles_factura df
+    JOIN facturas f ON f.id = df.factura_id
+    WHERE df.catalogo_obra_id = ? AND f.obra_id = ?
+    ORDER BY f.fecha ASC, f.id ASC
+  `).all(catalogo_id, obra_id)
+
+  const proveedores = db.prepare(`
+    SELECT
+      f.proveedor,
+      COUNT(df.id)                                  as num_compras,
+      SUM(df.cantidad)                              as cant_total,
+      SUM(df.subtotal)                              as costo_total,
+      MIN(df.precio_unitario)                       as precio_min,
+      MAX(df.precio_unitario)                       as precio_max,
+      CASE WHEN SUM(df.cantidad) > 0
+           THEN SUM(df.subtotal)/SUM(df.cantidad)
+           ELSE 0 END                               as precio_prom
+    FROM detalles_factura df
+    JOIN facturas f ON f.id = df.factura_id
+    WHERE df.catalogo_obra_id = ? AND f.obra_id = ?
+    GROUP BY f.proveedor
+    ORDER BY costo_total DESC
+  `).all(catalogo_id, obra_id)
+
+  const cant_comprada = compras.reduce((s, c) => s + c.cantidad, 0)
+  const costo_total   = compras.reduce((s, c) => s + c.subtotal, 0)
+  const precio_prom   = cant_comprada > 0 ? costo_total / cant_comprada : 0
+  const precio_min    = compras.length ? Math.min(...compras.map(c => c.precio_unitario)) : 0
+  const precio_max    = compras.length ? Math.max(...compras.map(c => c.precio_unitario)) : 0
+  const ultimo        = compras[compras.length - 1] || null
+  const primero       = compras[0] || null
+  const variacion_total_pct = primero && primero.precio_unitario > 0
+    ? ((ultimo.precio_unitario - primero.precio_unitario) / primero.precio_unitario) * 100
+    : 0
+
+  const precio_ref = insumo.precio_referencia || 0
+  const cant_pres  = insumo.cantidad_presupuestada || 0
+  const impacto_precio   = (precio_prom - precio_ref) * cant_comprada
+  const impacto_cantidad = (cant_comprada - cant_pres) * precio_ref
+  const sobrecosto_total = costo_total - (cant_pres * precio_ref)
+
+  return {
+    insumo,
+    compras,
+    proveedores,
+    kpis: {
+      num_compras: compras.length,
+      cant_comprada,
+      costo_total,
+      precio_min,
+      precio_max,
+      precio_prom,
+      ultimo_precio: ultimo?.precio_unitario ?? null,
+      ultima_fecha:  ultimo?.fecha ?? null,
+      variacion_total_pct,
+      variacion_vs_ref_pct: precio_ref > 0 ? ((precio_prom - precio_ref) / precio_ref) * 100 : 0,
+      impacto_precio,
+      impacto_cantidad,
+      sobrecosto_total
+    }
+  }
 }
 
 export const getHistorialVariaciones = (obra_id) => {

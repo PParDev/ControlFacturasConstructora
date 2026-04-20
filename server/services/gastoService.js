@@ -22,10 +22,11 @@ export const createGasto = (datos) => {
   const categoriaFinal = datos.categoria || 'Caja chica'
 
   return db.transaction(() => {
+    const catId = datos.catalogo_obra_id || null
     const info = db.prepare(`
-      INSERT INTO gastos (obra_id, categoria, concepto, monto, fecha)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(datos.obra_id, categoriaFinal, datos.concepto || '', datos.monto, fechaFinal)
+      INSERT INTO gastos (obra_id, categoria, concepto, monto, fecha, catalogo_obra_id)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(datos.obra_id, categoriaFinal, datos.concepto || '', datos.monto, fechaFinal, catId)
 
     db.prepare('UPDATE obras SET gasto_acumulado = gasto_acumulado + ? WHERE id = ?').run(datos.monto, datos.obra_id)
 

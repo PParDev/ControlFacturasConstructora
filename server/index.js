@@ -17,6 +17,9 @@ import importadorRouter from './routes/importador.js'
 const app  = express()
 const PORT = process.env.PORT || 3001
 
+// Migrate: add catalogo_obra_id to gastos if not present
+try { db.prepare('ALTER TABLE gastos ADD COLUMN catalogo_obra_id INTEGER REFERENCES catalogo_obras(id)').run() } catch (_) {}
+
 // Seed: ensure exactly the two static accounts exist
 ;(() => {
   const n = db.prepare('SELECT COUNT(*) as n FROM cuentas_bancarias').get().n

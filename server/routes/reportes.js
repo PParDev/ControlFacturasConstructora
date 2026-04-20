@@ -3,7 +3,8 @@ import {
   getReporteObra, getFacturasPendientes, getRecibidoVsFacturado,
   getEstadoCuenta, getExplosionInsumos, getAvancesObras, exportarExplosionExcel,
   getHistorialVariaciones, getFlujoCaja, getGastoMensual, getRankingProveedores,
-  getGastosDirectosObra
+  getGastosDirectosObra,
+  getHistorialPreciosObra, getHistorialPreciosInsumo
 } from '../controllers/reporteController.js'
 
 const router = Router()
@@ -15,6 +16,8 @@ router.get('/estado-cuenta',              getEstadoCuenta)
 router.get('/explosion-insumos/:id',      getExplosionInsumos)
 router.get('/explosion-insumos/:id/excel', exportarExplosionExcel)
 router.get('/historial-variaciones/:id',  getHistorialVariaciones)
+router.get('/historial-precios/:id',                       getHistorialPreciosObra)
+router.get('/historial-precios/:obra_id/:catalogo_id',     getHistorialPreciosInsumo)
 router.get('/avances-obras',              getAvancesObras)
 router.get('/flujo-caja',                 getFlujoCaja)
 router.get('/gasto-mensual',              getGastoMensual)

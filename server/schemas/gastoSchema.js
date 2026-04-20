@@ -6,5 +6,6 @@ export const gastoSchema = z.object({
   concepto:  z.string().optional(),
   monto:     z.number({ required_error: "El monto es requerido" }).positive("El monto debe ser mayor a 0"),
   fecha:     z.string().optional(),
-  cuenta_id: z.number().int().positive().nullable().optional()
+  cuenta_id:         z.number().int().positive().nullable().optional(),
+  catalogo_obra_id:  z.number().int().positive().nullable().optional()
 })

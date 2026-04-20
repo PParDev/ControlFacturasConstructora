@@ -13,6 +13,7 @@ import Catalogo from './pages/Catalogo'
 import Reportes from './pages/Reportes'
 import CentroCompras from './pages/CentroCompras'
 import ObraDetalle from './pages/ObraDetalle'
+import { Toaster } from './components/Toaster'
 
 
 export default function App() {
@@ -38,6 +39,7 @@ export default function App() {
           <Route path="*" element={<div className='p-4'>Pagina no encontrada</div>}/>
         </Routes>
       </main>
+      <Toaster />
     </div>
   )
 }

@@ -3,7 +3,8 @@ import { Badge } from '../components/Badge'
 import { FlowIndicator } from '../components/FlowIndicator'
 import { Loader } from '../components/Loader'
 import { Paginador } from '../components/Paginador'
-import { getFacturas, createFactura, getObras, getCuentas, getRecepcionesPendientes, getRecepcion, getAPI } from '../lib/api'
+import { getFacturas, createFactura, getObras, getCuentas, getRecepcionesPendientes, getRecepcion, getAPI, createCatalogo } from '../lib/api'
+import { toast } from '../lib/toast'
 import { fmt, today } from '../lib/utils'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { useLocation } from 'react-router-dom'
@@ -43,6 +44,38 @@ export default function Facturas() {
   const [cuentaId, setCuentaId] = useState('')
   const [page, setPage] = useState(1)
   const PER_PAGE = 10
+
+  // Modal insumo no previsto
+  const [showModal, setShowModal] = useState(false)
+  const [modalForm, setModalForm] = useState({ nombre: '', unidad: 'pza', precio_referencia: '' })
+
+  const crearInsumMutation = useMutation({
+    mutationFn: createCatalogo,
+    onSuccess: (nuevo) => {
+      queryClient.invalidateQueries({ queryKey: ['catalogo_obras', selectedObra] })
+      setDetallesAdicionales(d => [...d, {
+        catalogo_obra_id: nuevo.id,
+        cantidad: 1,
+        precio_unitario: nuevo.precio_referencia || 0
+      }])
+      setShowModal(false)
+      setModalForm({ nombre: '', unidad: 'pza', precio_referencia: '' })
+    },
+    onError: err => toast.error(err.message)
+  })
+
+  const guardarNuevoInsumo = () => {
+    if (!modalForm.nombre.trim()) { toast.error('El nombre es obligatorio'); return }
+    if (!selectedObra) { toast.error('Primero selecciona una obra'); return }
+    crearInsumMutation.mutate({
+      obra_id: parseInt(selectedObra),
+      codigo: '',
+      nombre: modalForm.nombre.trim(),
+      unidad: modalForm.unidad || 'pza',
+      cantidad_presupuestada: 0,
+      precio_referencia: parseFloat(modalForm.precio_referencia) || 0
+    })
+  }
 
   const { data: catalogo = [], isLoading: loadCat } = useQuery({
     queryKey: ['catalogo_obras', selectedObra],
@@ -107,7 +140,7 @@ export default function Facturas() {
       setSaved(true)
       setTimeout(() => setSaved(false), 4000)
     },
-    onError: (err) => alert('⚠ ' + err.message)
+    onError: (err) => toast.error(err.message)
   })
 
   // ---- Manejo de Detalles Adicionales ----
@@ -120,7 +153,7 @@ export default function Facturas() {
   }
 
   const addDetalleAdicional = () => {
-    if (!catalogo.length) return alert('Esta obra no tiene catálogo.')
+    if (!catalogo.length) { toast.warning('Esta obra no tiene catálogo'); return }
     setDetallesAdicionales(d => [...d, { catalogo_obra_id: catalogo[0].id, cantidad: 1, precio_unitario: catalogo[0].precio_referencia }])
     setBusqueda(b => ({ ...b, [detallesAdicionales.length]: '' }))
   }
@@ -154,8 +187,8 @@ export default function Facturas() {
 
   // ---- Guardar ----
   const save = () => {
-    if (!selectedObra) return alert('Selecciona una obra')
-    if (!proveedor) return alert('Escribe el nombre del proveedor')
+    if (!selectedObra) { toast.error('Selecciona una obra'); return }
+    if (!proveedor) { toast.error('Escribe el nombre del proveedor'); return }
     
     const detallesFinales = []
     let erroresVinculacion = false;
@@ -167,7 +200,7 @@ export default function Facturas() {
         if (pUnit > 0) {
           const catId = item.catalogo_obra_id || vinculosCorregidos[item.id]
           if (!catId) {
-             alert(`⚠ ERROR: El insumo "${item.producto}" no tiene vínculo con el catálogo. Por favor asígnale uno en la tabla usando "Vincular" antes de guardar.`);
+             toast.error(`El insumo "${item.producto}" no tiene vínculo con el catálogo. Asígnale uno antes de guardar.`);
              erroresVinculacion = true;
              break;
           }
@@ -197,7 +230,7 @@ export default function Facturas() {
       }
     })
 
-    if (detallesFinales.length === 0) return alert('Rellena los precios unitarios para facturar o agrega un concepto extra.')
+    if (detallesFinales.length === 0) { toast.warning('Rellena los precios unitarios para facturar o agrega un concepto extra'); return }
 
     saveMutation.mutate({
       obra_id: parseInt(selectedObra),
@@ -296,12 +329,16 @@ export default function Facturas() {
               </thead>
               <tbody>
                 {recActiva.items.map((item, idx) => {
-                  const cant = item.cantidad_recibida;
-                  const pu = parseFloat(itemsBulk[item.id]) || 0;
+                  const cant     = item.cantidad_recibida;
+                  const pu       = parseFloat(itemsBulk[item.id]) || 0;
                   const subtotal = cant * pu;
-                  
+                  const catId    = item.catalogo_obra_id || vinculosCorregidos[item.id]
+                  const catItem  = catalogo.find(c => c.id == catId)
+                  const pRef     = catItem?.precio_referencia || 0
+                  const alerta   = pu > 0 && pRef > 0 && pu > pRef
+
                   return (
-                    <tr key={item.id} className="border-t border-gray-100 hover:bg-gray-50/50 transition-colors">
+                    <tr key={item.id} className={`border-t border-gray-100 transition-colors ${alerta ? 'bg-red-50/40 hover:bg-red-50/60' : 'hover:bg-gray-50/50'}`}>
                       <td className="py-2 px-3">
                         <span className="font-semibold text-gray-700">{item.producto}</span>
                       </td>
@@ -309,7 +346,7 @@ export default function Facturas() {
                         {item.catalogo_obra_id ? (
                           <span className="text-[10px] bg-green-50 text-green-700 px-1.5 py-0.5 rounded font-medium">✓ Vinculado</span>
                         ) : (
-                          <select 
+                          <select
                             className="text-[10px] sm:text-xs bg-yellow-50 text-yellow-700 border border-yellow-200 outline-none rounded p-1 max-w-[120px] w-full"
                             value={vinculosCorregidos[item.id] || ''}
                             onChange={e => setVinculosCorregidos(prev => ({ ...prev, [item.id]: e.target.value }))}
@@ -330,11 +367,16 @@ export default function Facturas() {
                           min="0"
                           step="any"
                           placeholder="0.00"
-                          className="w-full text-sm border-gray-300 rounded shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1 text-right font-medium"
+                          className={`w-full text-sm rounded shadow-sm py-1 text-right font-medium ${alerta ? 'border-red-400 bg-red-50 focus:border-red-500' : 'border-gray-300 focus:border-blue-500'}`}
                           value={itemsBulk[item.id] !== undefined ? itemsBulk[item.id] : ''}
                           onChange={e => setItemsBulk(prev => ({ ...prev, [item.id]: e.target.value }))}
                           tabIndex={idx + 1}
                         />
+                        {alerta && (
+                          <div className="text-[10px] text-red-600 mt-0.5 flex items-center gap-0.5 font-medium">
+                            ⚠ Superior al catálogo ({fmt(pRef)})
+                          </div>
+                        )}
                       </td>
                       <td className="py-2 px-3 text-right font-semibold text-gray-700">
                         {fmt(subtotal)}
@@ -350,9 +392,19 @@ export default function Facturas() {
         {/* Partidas Libres / Extras */}
         <div className="flex items-center justify-between mb-2 mt-6">
           <div className="font-semibold text-gray-800 text-sm">Partidas o Recargos extra <span className="text-xs text-gray-400 font-normal">(Fletes, ajustes, etc.)</span></div>
-          <button className="btn btn-outline text-xs py-1.5 px-3" onClick={addDetalleAdicional} disabled={loadCat}>
-            + Agregar fila libre
-          </button>
+          <div className="flex gap-2">
+            <button
+              className="btn text-xs py-1.5 px-3 bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 rounded"
+              onClick={() => setShowModal(true)}
+              disabled={!selectedObra}
+              title="Crear un insumo que no estaba en el catálogo original"
+            >
+              + Crear insumo no previsto
+            </button>
+            <button className="btn btn-outline text-xs py-1.5 px-3" onClick={addDetalleAdicional} disabled={loadCat}>
+              + Agregar fila libre
+            </button>
+          </div>
         </div>
 
         {detallesAdicionales.length > 0 && (
@@ -370,8 +422,12 @@ export default function Facturas() {
               <tbody>
                 {detallesAdicionales.map((d, i) => {
                   const catFiltrado = getCatFiltrado(i)
+                  const catSelec    = catalogo.find(c => c.id == d.catalogo_obra_id)
+                  const pRefAdi     = catSelec?.precio_referencia || 0
+                  const alertaAdi   = parseFloat(d.precio_unitario) > 0 && pRefAdi > 0 && parseFloat(d.precio_unitario) > pRefAdi
+
                   return (
-                    <tr key={i} className="border-t border-gray-200">
+                    <tr key={i} className={`border-t border-gray-200 ${alertaAdi ? 'bg-red-50/30' : ''}`}>
                       <td className="py-2 px-3 space-y-1">
                         <input
                           className="w-full text-xs border border-gray-200 rounded px-2 py-1 mb-1 focus:border-blue-400 outline-none"
@@ -397,9 +453,13 @@ export default function Facturas() {
                           value={d.cantidad} onChange={e => updateDetalleAdi(i, 'cantidad', e.target.value)} tabIndex={100 + i}/>
                       </td>
                       <td className="py-2 px-3">
-                        <input type="number" className="w-full text-right border border-gray-200 rounded px-2 py-1 text-sm focus:border-blue-400 outline-none"
+                        <input type="number"
+                          className={`w-full text-right border rounded px-2 py-1 text-sm outline-none ${alertaAdi ? 'border-red-400 bg-red-50 focus:border-red-500' : 'border-gray-200 focus:border-blue-400'}`}
                           min="0" step="any"
                           value={d.precio_unitario} onChange={e => updateDetalleAdi(i, 'precio_unitario', e.target.value)} tabIndex={200 + i}/>
+                        {alertaAdi && (
+                          <div className="text-[10px] text-red-600 mt-0.5 font-medium">⚠ Superior al ref. ({fmt(pRefAdi)})</div>
+                        )}
                       </td>
                       <td className="py-2 px-3 text-right font-semibold text-gray-800 bg-gray-50/70">
                         {fmt((parseFloat(d.cantidad) || 0) * (parseFloat(d.precio_unitario) || 0))}
@@ -467,6 +527,61 @@ export default function Facturas() {
           {saveMutation.isPending ? 'Guardando factura...' : (pagoInmediato ? 'Guardar y Archivar como Pagada' : 'Guardar Factura por Pagar')}
         </button>
       </div>
+
+      {/* Modal: Insumo no previsto */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+            <div className="p-5 border-b border-gray-100">
+              <div className="font-semibold text-gray-800 text-base">Crear insumo no previsto</div>
+              <div className="text-xs text-gray-400 mt-0.5">
+                Se dará de alta en el catálogo de esta obra con cantidad presupuestada = 0.
+              </div>
+            </div>
+            <div className="p-5 space-y-3">
+              <div className="field">
+                <label>Nombre del insumo <span className="text-red-500">*</span></label>
+                <input
+                  autoFocus
+                  value={modalForm.nombre}
+                  onChange={e => setModalForm(f => ({ ...f, nombre: e.target.value }))}
+                  placeholder="Ej. Taza sanitaria marca X, Varilla 3/8 especial..."
+                  onKeyDown={e => e.key === 'Enter' && guardarNuevoInsumo()}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="field">
+                  <label>Unidad</label>
+                  <input
+                    value={modalForm.unidad}
+                    onChange={e => setModalForm(f => ({ ...f, unidad: e.target.value }))}
+                    placeholder="pza, m3, kg..."
+                  />
+                </div>
+                <div className="field">
+                  <label>Precio ref. ($) <span className="text-gray-400 font-normal text-xs">(Opcional)</span></label>
+                  <input
+                    type="number" min="0" step="any"
+                    value={modalForm.precio_referencia}
+                    onChange={e => setModalForm(f => ({ ...f, precio_referencia: e.target.value }))}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 p-5 pt-0">
+              <button
+                className="btn btn-primary flex-1"
+                onClick={guardarNuevoInsumo}
+                disabled={crearInsumMutation.isPending}
+              >
+                {crearInsumMutation.isPending ? 'Creando...' : 'Crear y agregar a factura'}
+              </button>
+              <button className="btn btn-outline" onClick={() => setShowModal(false)}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Historial */}
       <div className="card">

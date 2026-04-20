@@ -111,6 +111,8 @@ export const getExplosionInsumos = (obra_id, hasta) => {
   return getAPI(url)
 }
 export const getHistorialVariaciones = (obra_id) => getAPI(`/api/reportes/historial-variaciones/${obra_id}`)
+export const getHistorialPreciosObra   = (obra_id) => getAPI(`/api/reportes/historial-precios/${obra_id}`)
+export const getHistorialPreciosInsumo = (obra_id, catalogo_id) => getAPI(`/api/reportes/historial-precios/${obra_id}/${catalogo_id}`)
 export const getEstadoCuenta = (cuenta_id, desde, hasta) => {
   let url = `/api/reportes/estado-cuenta?cuenta_id=${cuenta_id}`
   if (desde) url += `&desde=${desde}`

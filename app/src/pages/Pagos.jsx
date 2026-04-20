@@ -6,6 +6,7 @@ import { Loader } from '../components/Loader'
 import { Paginador } from '../components/Paginador'
 import { fmt, today } from '../lib/utils'
 import { getPagos, createPago, getFacturas, getObras, getCuentas } from '../lib/api'
+import { toast } from '../lib/toast'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'react-router-dom'
 
@@ -65,12 +66,12 @@ export default function Pagos() {
 
       setTimeout(() => setSaved(false), 4000)
     },
-    onError: err => alert(err.message)
+    onError: err => toast.error(err.message)
   })
 
   const save = () => {
     const fid = parseInt(factura_id || actFac?.id)
-    if (!fid) return alert('Selecciona una factura')
+    if (!fid) { toast.error('Selecciona una factura'); return }
     mutation.mutate({
       factura_id: fid,
       referencia,

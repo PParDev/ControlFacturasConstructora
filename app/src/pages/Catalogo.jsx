@@ -1,8 +1,12 @@
 import { useState, useMemo, useRef } from 'react'
 import { Badge } from '../components/Badge'
 import { Loader } from '../components/Loader'
+import { SortableTh } from '../components/SortableTh'
+import { useSortable } from '../hooks/useSortable'
 import { fmt } from '../lib/utils'
-import { getObras, getAPI, createCatalogo, updateCatalogo, toggleCatalogo, getExplosionInsumos, getCatalogoHistorial, importarCatalogo } from '../lib/api'
+import { toast } from '../lib/toast'
+import { getObras, getAPI, createCatalogo, updateCatalogo, toggleCatalogo, getExplosionInsumos, getCatalogoHistorial, importarCatalogo, getHistorialPreciosObra } from '../lib/api'
+import { Sparkline } from '../components/Sparkline'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 const EMPTY = { codigo: '', nombre: '', descripcion: '', unidad: 'pieza', categoria: '', precio_referencia: '', cantidad_presupuestada: '', status: 'Activo' }
@@ -54,6 +58,18 @@ export default function Catalogo() {
     return m
   }, [avance])
 
+  // Historial de precios por insumo (para mini-sparkline en cada fila)
+  const { data: histPrecios = [] } = useQuery({
+    queryKey: ['hist_precios_obra', activeObraId],
+    queryFn: () => getHistorialPreciosObra(activeObraId),
+    enabled: !!activeObraId
+  })
+  const histMap = useMemo(() => {
+    const m = {}
+    histPrecios.forEach(h => { m[h.catalogo_id] = h })
+    return m
+  }, [histPrecios])
+
   // Mapa catalogo_id → cantidad de cambios de precio registrados
   // (se obtiene en bloque al abrir historial; para el badge consultamos todos los items)
   // Para no saturar con N queries, solo mostramos el botón siempre y cargamos al click.
@@ -74,7 +90,7 @@ export default function Catalogo() {
       setImportMsg(`${res.insertados} conceptos nuevos, ${res.actualizados ?? 0} actualizados.`)
       setTimeout(() => setImportMsg(null), 5000)
     },
-    onError: (err) => alert(err.message)
+    onError: (err) => toast.error(err.message)
   })
 
   const handleImportFile = (e) => {
@@ -105,13 +121,29 @@ export default function Catalogo() {
 
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
 
-  const filtered = useMemo(() =>
+  const filteredBase = useMemo(() =>
     prods.filter(p => {
       const match = q.toLowerCase()
       return (p.nombre || '').toLowerCase().includes(match) || (p.codigo || '').toLowerCase().includes(match)
     }),
     [prods, q]
   )
+
+  // Enrich with avance data so we can sort by real columns
+  const filteredEnriched = useMemo(() =>
+    filteredBase.map(p => {
+      const av = avance.find(a => a.concepto === p.nombre) || {}
+      return {
+        ...p,
+        cant_comprada: av.cant_comprada || 0,
+        costo_real:    av.costo_real    || 0,
+        total_est:     (p.cantidad_presupuestada || 0) * (p.precio_referencia || 0)
+      }
+    }),
+    [filteredBase, avance]
+  )
+
+  const { sorted: filtered, sortKey, sortDir, handleSort } = useSortable(filteredEnriched, 'codigo')
 
   const openNew  = () => { setForm(EMPTY); setEditId(null); setShow(true) }
   const openEdit = p  => {
@@ -131,8 +163,8 @@ export default function Catalogo() {
   const cancel = () => { setShow(false); setEditId(null) }
 
   const save = () => {
-    if (!form.nombre) return alert('El nombre es requerido')
-    if (!activeObraId) return alert('Seleccione una obra')
+    if (!form.nombre) { toast.error('El nombre es requerido'); return }
+    if (!activeObraId) { toast.error('Selecciona una obra'); return }
     const payload = {
       ...form,
       obra_id: parseInt(activeObraId),
@@ -314,28 +346,24 @@ export default function Catalogo() {
           <table>
             <thead>
               <tr>
-                <th>Código</th>
-                <th>Nombre</th>
-                <th>Unidad</th>
-                <th className="text-right border-l">Presupuestado</th>
-                <th className="text-right">Precio Ref.</th>
-                <th className="text-right">Total Est.</th>
+                <SortableTh label="Código"      col="codigo"               sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                <SortableTh label="Nombre"      col="nombre"               sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                <SortableTh label="Unidad"      col="unidad"               sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                <SortableTh label="Presupuestado" col="cantidad_presupuestada" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} className="text-right border-l" right />
+                <SortableTh label="Precio Ref." col="precio_referencia"    sortKey={sortKey} sortDir={sortDir} onSort={handleSort} className="text-right" right />
+                <SortableTh label="Total Est."  col="total_est"            sortKey={sortKey} sortDir={sortDir} onSort={handleSort} className="text-right" right />
                 <th className="border-l">Avance Real</th>
-                <th className="text-right">Comprado</th>
-                <th className="text-right">Gasto Real</th>
-                <th>Estado</th>
+                <SortableTh label="Comprado"    col="cant_comprada"        sortKey={sortKey} sortDir={sortDir} onSort={handleSort} className="text-right" right />
+                <SortableTh label="Gasto Real"  col="costo_real"           sortKey={sortKey} sortDir={sortDir} onSort={handleSort} className="text-right" right />
+                <th className="text-center">Tendencia</th>
+                <SortableTh label="Estado"      col="status"               sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {filtered.map(p => {
-                // Buscar el avance por código
-                const av = avance.find(a => {
-                  // Intentar match por nombre si no por codigo
-                  return a.concepto === p.nombre
-                }) || { cant_comprada: 0, costo_real: 0 }
-                const cantComprada = av.cant_comprada || 0
-                const costoReal = av.costo_real || 0
+                const cantComprada = p.cant_comprada
+                const costoReal    = p.costo_real
 
                 return (
                   <tr key={p.id} style={{ opacity: p.status === 'Inactivo' ? 0.45 : 1 }}>
@@ -361,6 +389,22 @@ export default function Catalogo() {
                       <span className={`font-semibold ${costoReal > (p.cantidad_presupuestada * p.precio_referencia) ? 'text-red-600' : costoReal > 0 ? 'text-gray-800' : 'text-gray-300'}`}>
                         {costoReal > 0 ? fmt(costoReal) : '—'}
                       </span>
+                    </td>
+                    <td className="text-center">
+                      {(() => {
+                        const h = histMap[p.id]
+                        if (!h || !h.sparkline?.length) return <span className="text-[10px] text-gray-300">—</span>
+                        const variacion = h.variacion_pct || 0
+                        const stroke = variacion > 5 ? '#ef4444' : variacion < -5 ? '#10b981' : '#6b7280'
+                        return (
+                          <div className="inline-flex flex-col items-center">
+                            <Sparkline data={h.sparkline} referencia={p.precio_referencia} width={80} height={24} stroke={stroke} />
+                            <span className={`text-[10px] font-bold ${variacion > 0 ? 'text-red-600' : variacion < 0 ? 'text-emerald-600' : 'text-gray-400'}`}>
+                              {variacion > 0 ? '+' : ''}{variacion.toFixed(1)}%
+                            </span>
+                          </div>
+                        )
+                      })()}
                     </td>
                     <td><Badge s={p.status} /></td>
                     <td>
@@ -425,7 +469,7 @@ export default function Catalogo() {
                 )
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan="11" className="text-center text-gray-400 py-8">
+                <tr><td colSpan="12" className="text-center text-gray-400 py-8">
                   {prods.length === 0
                     ? 'Esta obra no tiene conceptos. Agrega manualmente o usa el botón "↑ Importar Excel" aquí arriba.'
                     : 'Sin resultados para la búsqueda.'}

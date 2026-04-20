@@ -2,12 +2,14 @@ import { useState } from 'react'
 import { Loader } from '../components/Loader'
 import { fmt, today } from '../lib/utils'
 import { getCuentas, getTransacciones, createTransaccion, getObras, updateSaldoInicial } from '../lib/api'
+import { toast } from '../lib/toast'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 export default function Cuentas() {
   const queryClient = useQueryClient()
   const [activeId, setActiveId] = useState(null)
-  const [form, setForm] = useState({ fecha: today(), beneficiario: '', concepto: '', monto: '', tipo: 'Cargo', obra_id: '' })
+  const CATS_ABONO = ['Aportación de capital', 'Venta/Ingreso por obra', 'Traspaso entre cuentas', 'Crédito bancario', 'Otro']
+  const [form, setForm] = useState({ fecha: today(), beneficiario: '', concepto: '', monto: '', tipo: 'Cargo', obra_id: '', categoria_abono: '' })
   const [saved, setSaved] = useState(false)
 
   const { data: cuentas = [], isLoading: loadCuentas } = useQuery({ queryKey: ['cuentas'], queryFn: getCuentas })
@@ -28,18 +30,24 @@ export default function Cuentas() {
       queryClient.invalidateQueries({ queryKey: ['transacciones', activeTabId] })
       queryClient.invalidateQueries({ queryKey: ['cuentas'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-      setForm({ fecha: today(), beneficiario: '', concepto: '', monto: '', tipo: 'Cargo', obra_id: '' })
+      setForm({ fecha: today(), beneficiario: '', concepto: '', monto: '', tipo: 'Cargo', obra_id: '', categoria_abono: '' })
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     },
-    onError: (err) => alert(err.message)
+    onError: (err) => toast.error(err.message)
   })
 
   const registrar = () => {
     const monto = parseFloat(form.monto)
-    if (!monto || monto <= 0) return alert('El monto debe ser mayor a 0')
-    if (!form.fecha || !form.beneficiario) return alert('Fecha y Beneficiario son requeridos')
-    mutacion.mutate({ ...form, monto, obra_id: form.obra_id || null })
+    if (!monto || monto <= 0) { toast.error('El monto debe ser mayor a 0'); return }
+    if (!form.fecha || !form.beneficiario) { toast.error('Fecha y Beneficiario son requeridos'); return }
+    if (form.tipo === 'Abono' && !form.categoria_abono) { toast.error('Selecciona el tipo de ingreso para el abono'); return }
+    mutacion.mutate({
+      ...form,
+      monto,
+      obra_id:  form.obra_id || null,
+      categoria: form.tipo === 'Abono' && form.categoria_abono ? form.categoria_abono : 'General'
+    })
   }
 
   if (loadCuentas) return <div><div className="page-title">Cuentas</div><Loader /></div>
@@ -116,10 +124,10 @@ export default function Cuentas() {
                           queryClient.invalidateQueries({ queryKey: ['cuentas'] })
                           queryClient.invalidateQueries({ queryKey: ['dashboard'] })
                         } catch (err) {
-                          alert(err.message)
+                          toast.error(err.message)
                         }
                       } else {
-                        alert('Valor inválido')
+                        toast.error('Valor inválido')
                       }
                     }
                   }}
@@ -184,6 +192,16 @@ export default function Cuentas() {
                   placeholder={esCredito ? 'Ej. Home Depot, Oxxo Gas' : 'Ej. Familia Martínez, Préstamo'} />
               </div>
 
+              {form.tipo === 'Abono' && (
+                <div className="field">
+                  <label>Tipo de ingreso <span className="text-red-500">*</span></label>
+                  <select value={form.categoria_abono} onChange={e => setForm(f => ({ ...f, categoria_abono: e.target.value }))}>
+                    <option value="">— Seleccionar —</option>
+                    {CATS_ABONO.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              )}
+
               <div className="field">
                 <label>Concepto / Notas (Opcional)</label>
                 <input value={form.concepto} onChange={e => setForm(f => ({ ...f, concepto: e.target.value }))}
@@ -222,7 +240,7 @@ export default function Cuentas() {
                     <thead>
                       <tr>
                         <th>Fecha</th><th>Tipo</th><th>Beneficiario</th>
-                        <th>Concepto</th><th className="text-right">Monto</th><th>Obra</th>
+                        <th>Concepto</th><th>Categoría</th><th className="text-right">Monto</th><th>Obra</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -236,6 +254,12 @@ export default function Cuentas() {
                           </td>
                           <td className="font-medium text-gray-900">{t.beneficiario}</td>
                           <td className="text-gray-500 text-sm max-w-[200px] truncate">{t.concepto || '—'}</td>
+                          <td>
+                            {t.tipo === 'Abono' && t.categoria && t.categoria !== 'General'
+                              ? <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-50 text-emerald-700">{t.categoria}</span>
+                              : <span className="text-gray-300 text-xs">—</span>
+                            }
+                          </td>
                           <td className={`text-right font-semibold ${t.tipo === 'Cargo' ? 'text-red-600' : 'text-emerald-600'}`}>
                             {t.tipo === 'Cargo' ? '−' : '+'}{fmt(t.monto)}
                           </td>
@@ -243,7 +267,7 @@ export default function Cuentas() {
                         </tr>
                       ))}
                       {transacciones.length === 0 && (
-                        <tr><td colSpan="6" className="text-center text-gray-400 py-4">Sin movimientos en esta cuenta</td></tr>
+                        <tr><td colSpan="7" className="text-center text-gray-400 py-4">Sin movimientos en esta cuenta</td></tr>
                       )}
                     </tbody>
                   </table>

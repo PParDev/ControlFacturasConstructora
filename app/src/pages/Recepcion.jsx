@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { FlowIndicator } from '../components/FlowIndicator'
 import { getRecepciones, createRecepcion, createRecepcionBulk, getObras, getPedidos, getCatalogo } from '../lib/api'
+import { toast } from '../lib/toast'
 import { Loader } from '../components/Loader'
 import { Paginador } from '../components/Paginador'
 import { fmt, today } from '../lib/utils'
@@ -122,13 +123,13 @@ export default function Recepcion() {
   const mutSingle = useMutation({
     mutationFn: createRecepcion,
     onSuccess: (res) => handleSuccess(res.folio),
-    onError: (err) => alert('Error: ' + err.message)
+    onError: (err) => toast.error(err.message)
   })
 
   const mutBulk = useMutation({
     mutationFn: createRecepcionBulk,
     onSuccess: (res) => handleSuccess(res.length > 0 ? res[0].folio : ''),
-    onError: (err) => alert('Error: ' + err.message)
+    onError: (err) => toast.error(err.message)
   })
 
   const handleSuccess = (folio) => {
@@ -165,7 +166,7 @@ export default function Recepcion() {
 
   const save = () => {
     if (flujo === 1) {
-      if (!form.obra_id || !form.producto) return alert('Completa la obra y el producto')
+      if (!form.obra_id || !form.producto) { toast.error('Completa la obra y el producto'); return }
       mutSingle.mutate({
         ...form,
         cantidad_recibida: parseFloat(form.cantidad_recibida),
@@ -173,7 +174,7 @@ export default function Recepcion() {
         catalogo_obra_id: form.catalogo_obra_id || null
       })
     } else {
-      if (!ocActiva) return alert('Selecciona una orden de compra')
+      if (!ocActiva) { toast.error('Selecciona una orden de compra'); return }
       
       const payload = ocActiva.items
         .filter(item => {
@@ -193,7 +194,7 @@ export default function Recepcion() {
           tipo_flujo: 'con_pedido'
         }))
 
-      if (payload.length === 0) return alert('Ingresa cantidad para al menos un insumo')
+      if (payload.length === 0) { toast.error('Ingresa cantidad para al menos un insumo'); return }
       mutBulk.mutate(payload)
     }
   }

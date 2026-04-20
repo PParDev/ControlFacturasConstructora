@@ -15,6 +15,14 @@ export const getEstadoCuenta          = (req, res) => res.json(reporteService.ge
 export const getExplosionInsumos      = (req, res) => res.json(reporteService.getExplosionInsumos(req.params.id, req.query.hasta || null))
 export const getAvancesObras          = (req, res) => res.json(reporteService.getAvancesObrasDetallado())
 export const getHistorialVariaciones  = (req, res) => res.json(reporteService.getHistorialVariaciones(req.params.id))
+export const getHistorialPreciosObra  = (req, res) => {
+  try { res.json(reporteService.getHistorialPreciosObra(req.params.id)) }
+  catch (e) { res.status(400).json({ error: e.message }) }
+}
+export const getHistorialPreciosInsumo = (req, res) => {
+  try { res.json(reporteService.getHistorialPreciosInsumo(req.params.obra_id, req.params.catalogo_id)) }
+  catch (e) { res.status(404).json({ error: e.message }) }
+}
 export const getFlujoCaja             = (req, res) => res.json(reporteService.getFlujoCaja())
 export const getGastoMensual          = (req, res) => res.json(reporteService.getGastoMensual(req.query.obra_id || null))
 export const getRankingProveedores    = (req, res) => res.json(reporteService.getRankingProveedores(req.query.obra_id || null))

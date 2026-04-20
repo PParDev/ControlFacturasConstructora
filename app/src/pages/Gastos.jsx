@@ -1,8 +1,10 @@
 import { useState, useMemo } from 'react'
 import { Loader } from '../components/Loader'
 import { fmt, today } from '../lib/utils'
-import { getGastos, createGasto, getObras, getCuentas } from '../lib/api'
+import { getGastos, createGasto, getObras, getCuentas, getAPI } from '../lib/api'
+import { toast } from '../lib/toast'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { AlertTriangle } from 'lucide-react'
 
 const CATEGORIAS = ['Caja chica', 'Herramientas', 'Mano de obra']
 
@@ -14,7 +16,14 @@ export default function Gastos() {
 
   const [filtroObra, setFiltroObra] = useState('Todas')
   const [filtroQ,    setFiltroQ]    = useState('')
-  const [form, setForm] = useState({ obra_id: '', categoria: 'Caja chica', concepto: '', monto: '', fecha: today(), cuenta_id: '' })
+  const [form, setForm] = useState({ obra_id: '', categoria: 'Caja chica', concepto: '', monto: '', fecha: today(), cuenta_id: '', catalogo_obra_id: '' })
+
+  const obraIdParaCatalogo = form.obra_id || obras[0]?.id || ''
+  const { data: catalogoObra = [] } = useQuery({
+    queryKey: ['catalogo_obras', obraIdParaCatalogo],
+    queryFn:  () => getAPI(`/api/catalogo?obra_id=${obraIdParaCatalogo}`),
+    enabled:  !!obraIdParaCatalogo
+  })
   const [saved, setSaved] = useState(false)
 
   const obraIdActual = form.obra_id || obras[0]?.id || ''
@@ -27,22 +36,23 @@ export default function Gastos() {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       queryClient.invalidateQueries({ queryKey: ['cuentas'] })
       queryClient.invalidateQueries({ queryKey: ['transacciones'] })
-      setForm(p => ({ ...p, concepto: '', monto: '', fecha: today() }))
+      setForm(p => ({ ...p, concepto: '', monto: '', fecha: today(), catalogo_obra_id: '' }))
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     },
-    onError: (err) => alert('Error al guardar: ' + err.message)
+    onError: (err) => toast.error('Error al guardar: ' + err.message)
   })
 
   const save = () => {
-    if (!form.concepto || !form.monto || !obraIdActual) return alert('Completa los campos obligatorios')
+    if (!form.concepto || !form.monto || !obraIdActual) { toast.error('Completa los campos obligatorios'); return }
     mutation.mutate({
       obra_id:   obraIdActual,
       categoria: form.categoria,
       concepto:  form.concepto,
       monto:     parseFloat(form.monto),
       fecha:     form.fecha,
-      cuenta_id: form.cuenta_id ? parseInt(form.cuenta_id) : null
+      cuenta_id:        form.cuenta_id        ? parseInt(form.cuenta_id)       : null,
+      catalogo_obra_id: form.catalogo_obra_id ? parseInt(form.catalogo_obra_id) : null
     })
   }
 
@@ -106,6 +116,32 @@ export default function Gastos() {
               <option value="">— Sin afectar cuenta —</option>
               {cuentas.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
             </select>
+          </div>
+          <div className="field md:col-span-2">
+            <label className="flex items-center gap-1.5">
+              Vincular a insumo del catálogo
+              <span className="text-[10px] font-normal text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
+                Cuenta en la Explosión de Insumos
+              </span>
+            </label>
+            <select
+              value={form.catalogo_obra_id}
+              onChange={e => setForm(p => ({ ...p, catalogo_obra_id: e.target.value }))}
+              disabled={catalogoObra.length === 0}
+            >
+              <option value="">— Sin vincular (gasto general) —</option>
+              {catalogoObra.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.codigo ? `[${c.codigo}] ` : ''}{c.nombre} ({c.unidad})
+                </option>
+              ))}
+            </select>
+            {form.catalogo_obra_id && (
+              <div className="mt-1 flex items-center gap-1 text-[11px] text-emerald-700">
+                <AlertTriangle size={11} />
+                Este gasto sumará al "Total Real" de ese insumo en la Explosión de Insumos.
+              </div>
+            )}
           </div>
         </div>
 

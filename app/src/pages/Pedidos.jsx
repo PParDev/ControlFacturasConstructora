@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { FlowIndicator } from '../components/FlowIndicator'
 import { getPedidos, createPedidoBulk, getObras, getCatalogo } from '../lib/api'
+import { toast } from '../lib/toast'
 import { Loader } from '../components/Loader'
 import { fmt, today } from '../lib/utils'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -66,14 +67,14 @@ export default function Pedidos() {
       setSaved(true)
       setTimeout(() => setSaved(false), 5000)
     },
-    onError: (err) => alert('Error al guardar pedido: ' + err.message)
+    onError: (err) => toast.error('Error al guardar pedido: ' + err.message)
   })
 
   const setD = k => e => setDoc(p => ({ ...p, [k]: e.target.value }))
 
   const addToCart = () => {
-    if (!item.catalogo_obra_id) return alert('Selecciona un insumo del catálogo')
-    if (!item.cantidad || parseFloat(item.cantidad) <= 0) return alert('Ingresa una cantidad válida')
+    if (!item.catalogo_obra_id) { toast.error('Selecciona un insumo del catálogo'); return }
+    if (!item.cantidad || parseFloat(item.cantidad) <= 0) { toast.error('Ingresa una cantidad válida'); return }
     const ins = catalogo.find(c => c.id == item.catalogo_obra_id)
     setCart(prev => [...prev, {
       catalogo_obra_id: parseInt(item.catalogo_obra_id),
@@ -88,8 +89,8 @@ export default function Pedidos() {
   const removeFromCart = (index) => setCart(cart.filter((_, i) => i !== index))
 
   const save = () => {
-    if (!doc.proveedor || !doc.obra_id) return alert('Proveedor y Obra son obligatorios')
-    if (cart.length === 0) return alert('Agrega al menos un insumo al pedido')
+    if (!doc.proveedor || !doc.obra_id) { toast.error('Proveedor y Obra son obligatorios'); return }
+    if (cart.length === 0) { toast.error('Agrega al menos un insumo al pedido'); return }
 
     const payload = cart.map(c => ({
       obra_id:         parseInt(doc.obra_id),

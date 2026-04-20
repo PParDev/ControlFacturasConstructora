@@ -1,13 +1,21 @@
 import { useState } from 'react'
 import { Badge } from '../components/Badge'
 import { Loader } from '../components/Loader'
+import { SortableTh } from '../components/SortableTh'
+import { useSortable } from '../hooks/useSortable'
 import { fmt } from '../lib/utils'
 import {
   getObras, getGastos, getFacturas, getCuentas, getRecepciones, getPedidos,
   getExplosionInsumos, getEstadoCuenta, getHistorialVariaciones,
   getAvancesObras, getFlujoCaja, getGastoMensual, getRankingProveedores,
-  getGastosDirectos
+  getGastosDirectos,
+  getHistorialPreciosObra, getHistorialPreciosInsumo
 } from '../lib/api'
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  ReferenceLine, ScatterChart, Scatter
+} from 'recharts'
+import { Sparkline } from '../components/Sparkline'
 import { useQuery } from '@tanstack/react-query'
 
 const TIPOS = [
@@ -17,6 +25,7 @@ const TIPOS = [
   'Gasto mensual por obra',
   'Ranking de proveedores',
   'Historial y Variación de Precios',
+  'Histórico de precios por insumo',
   'Resumen por obra',
   'Facturas pendientes',
   'Pedidos vs Entregas (Merma)',
@@ -62,6 +71,12 @@ export default function Reportes() {
     enabled: tipo === 'Historial y Variación de Precios' && obraId !== 'Todas'
   })
 
+  const { data: histPrecios = [], isLoading: lHP } = useQuery({
+    queryKey: ['hist_precios_obra', obraId],
+    queryFn: () => getHistorialPreciosObra(obraId),
+    enabled: tipo === 'Histórico de precios por insumo' && obraId !== 'Todas'
+  })
+
   const { data: avancesObras = [], isLoading: lAv } = useQuery({
     queryKey: ['avances_obras'],
     queryFn: getAvancesObras,
@@ -93,7 +108,7 @@ export default function Reportes() {
   })
 
   const isLoading = lObr || lGas || lFac || lCheq || lRec || lPed ||
-                    lExp || lEdc || lVar || lAv || lFC || lGM || lRP || lGD
+                    lExp || lEdc || lVar || lAv || lFC || lGM || lRP || lGD || lHP
 
   if (isLoading && obras.length === 0) {
     return (
@@ -120,7 +135,7 @@ export default function Reportes() {
   }
 
   // Reportes que requieren obra específica
-  const needsObra = ['Explosión de insumos y avance', 'Historial y Variación de Precios']
+  const needsObra = ['Explosión de insumos y avance', 'Historial y Variación de Precios', 'Histórico de precios por insumo']
   // Reportes que NO usan filtro de obra
   const noObraFilter = ['Avance global de obras', 'Flujo de caja', 'Estado de cuenta bancaria']
 
@@ -268,6 +283,21 @@ export default function Reportes() {
           <div className="card"><Loader /></div>
         ) : (
           <HistorialVariacionPrecios variaciones={variaciones} obraNombre={getObraName()} fmt={fmt} />
+        )
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {/* HISTÓRICO DE PRECIOS POR INSUMO                                       */}
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {tipo ==='Histórico de precios por insumo' && (
+        obraId === 'Todas' ? (
+          <div className="card text-center py-10 text-gray-400">
+            Seleccione una obra para analizar el histórico de precios de sus insumos.
+          </div>
+        ) : lHP ? (
+          <div className="card"><Loader /></div>
+        ) : (
+          <HistoricoPrecios insumos={histPrecios} obraId={obraId} obraNombre={getObraName()} fmt={fmt} />
         )
       )}
 
@@ -908,12 +938,16 @@ function ExplosionComparativa({ explosion, gastosDirectos = [], obraNombre, obra
 
   const categorias = [...new Set(explosion.map(e => e.categoria).filter(Boolean))]
 
-  const filas = explosion.filter(e => {
-    const matchQ   = !q || e.concepto.toLowerCase().includes(q.toLowerCase()) || (e.codigo || '').toLowerCase().includes(q.toLowerCase())
-    const matchCat = catFiltro === 'Todas' || e.categoria === catFiltro
-    const matchDes = !soloDesviados || e.costo_real > e.presupuesto_total
-    return matchQ && matchCat && matchDes
-  })
+  const filasBase = explosion
+    .map(e => ({ ...e, diferencia: e.costo_real - (e.presupuesto_total || 0) }))
+    .filter(e => {
+      const matchQ   = !q || e.concepto.toLowerCase().includes(q.toLowerCase()) || (e.codigo || '').toLowerCase().includes(q.toLowerCase())
+      const matchCat = catFiltro === 'Todas' || e.categoria === catFiltro
+      const matchDes = !soloDesviados || e.costo_real > e.presupuesto_total
+      return matchQ && matchCat && matchDes
+    })
+
+  const { sorted: filas, sortKey: expSortKey, sortDir: expSortDir, handleSort: expHandleSort } = useSortable(filasBase, 'codigo')
 
   const totPresup = explosion.reduce((s, e) => s + (e.presupuesto_total || 0), 0)
   const totReal   = explosion.reduce((s, e) => s + (e.costo_real || 0), 0)
@@ -1004,23 +1038,23 @@ function ExplosionComparativa({ explosion, gastosDirectos = [], obraNombre, obra
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left bg-gray-50 border-y border-gray-200">
-                <th className="px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-16">Cód.</th>
-                <th className="px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Concepto</th>
-                <th className="px-2 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide text-center w-12">Un.</th>
-                <th className="px-3 py-2.5 text-xs font-semibold text-blue-600 uppercase tracking-wide border-l border-blue-100 bg-blue-50/60 text-right">Cant. Pres.</th>
-                <th className="px-3 py-2.5 text-xs font-semibold text-blue-600 uppercase tracking-wide bg-blue-50/60 text-right">Precio Ref.</th>
-                <th className="px-3 py-2.5 text-xs font-semibold text-blue-600 uppercase tracking-wide bg-blue-50/60 text-right">Total Est.</th>
-                <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide border-l border-gray-200 text-right">Cant. Real</th>
-                <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide text-right">Precio Real</th>
-                <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide text-right">Total Real</th>
-                <th className="px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide border-l border-gray-200 text-right">Diferencia</th>
-                <th className="px-2 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide text-center w-20">% Avance</th>
+              <tr className="text-left bg-gray-50 border-y border-gray-200 text-xs font-semibold uppercase tracking-wide">
+                <SortableTh label="Cód."       col="codigo"           sortKey={expSortKey} sortDir={expSortDir} onSort={expHandleSort} className="px-3 py-2.5 text-gray-500 w-16" />
+                <SortableTh label="Concepto"   col="concepto"         sortKey={expSortKey} sortDir={expSortDir} onSort={expHandleSort} className="px-3 py-2.5 text-gray-500" />
+                <th className="px-2 py-2.5 text-gray-500 text-center w-12">Un.</th>
+                <SortableTh label="Cant. Pres." col="cant_presupuestada" sortKey={expSortKey} sortDir={expSortDir} onSort={expHandleSort} className="px-3 py-2.5 text-blue-600 border-l border-blue-100 bg-blue-50/60" right />
+                <SortableTh label="Precio Ref." col="precio_estimado"  sortKey={expSortKey} sortDir={expSortDir} onSort={expHandleSort} className="px-3 py-2.5 text-blue-600 bg-blue-50/60" right />
+                <SortableTh label="Total Est."  col="presupuesto_total" sortKey={expSortKey} sortDir={expSortDir} onSort={expHandleSort} className="px-3 py-2.5 text-blue-600 bg-blue-50/60" right />
+                <SortableTh label="Cant. Real"  col="cant_comprada"    sortKey={expSortKey} sortDir={expSortDir} onSort={expHandleSort} className="px-3 py-2.5 text-gray-600 border-l border-gray-200" right />
+                <SortableTh label="Precio Real" col="precio_real_prom" sortKey={expSortKey} sortDir={expSortDir} onSort={expHandleSort} className="px-3 py-2.5 text-gray-600" right />
+                <SortableTh label="Total Real"  col="costo_real"       sortKey={expSortKey} sortDir={expSortDir} onSort={expHandleSort} className="px-3 py-2.5 text-gray-600" right />
+                <SortableTh label="Diferencia"  col="diferencia"       sortKey={expSortKey} sortDir={expSortDir} onSort={expHandleSort} className="px-3 py-2.5 text-gray-500 border-l border-gray-200" right />
+                <th className="px-2 py-2.5 text-gray-500 text-center w-20">% Avance</th>
               </tr>
             </thead>
             <tbody>
               {filas.map((e, i) => {
-                const diferencia = e.costo_real - (e.presupuesto_total || 0)
+                const diferencia = e.diferencia
                 const pct        = e.presupuesto_total > 0 ? (e.costo_real / e.presupuesto_total) * 100 : 0
                 const sinCompras = e.cant_comprada === 0
                 const sobre      = diferencia > 0.01
@@ -1317,5 +1351,342 @@ function HistorialVariacionPrecios({ variaciones, obraNombre, fmt }) {
         </div>
       </div>
     </>
+  )
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// HISTÓRICO DE PRECIOS POR INSUMO
+// Permite identificar si una obra costó más/menos por CAMBIO DE PRECIO o por
+// CAMBIO DE CANTIDAD (atribución de la discrepancia).
+// ════════════════════════════════════════════════════════════════════════════
+const PROVEEDOR_COLORS = ['#3b82f6','#ef4444','#10b981','#f59e0b','#8b5cf6','#ec4899','#06b6d4','#84cc16','#f97316','#6366f1']
+
+function HistoricoPrecios({ insumos, obraId, obraNombre, fmt }) {
+  const conCompras = insumos.filter(i => i.num_compras > 0)
+  const [busqueda, setBusqueda] = useState('')
+  const [seleccionado, setSeleccionado] = useState(conCompras[0]?.catalogo_id ?? null)
+
+  const filtrados = conCompras.filter(i =>
+    !busqueda ||
+    i.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
+    (i.codigo || '').toLowerCase().includes(busqueda.toLowerCase())
+  )
+
+  const { data: detalle, isLoading: lDet } = useQuery({
+    queryKey: ['hist_precio_insumo', obraId, seleccionado],
+    queryFn: () => getHistorialPreciosInsumo(obraId, seleccionado),
+    enabled: !!seleccionado
+  })
+
+  if (conCompras.length === 0) {
+    return (
+      <div className="card text-center py-10 text-gray-400">
+        Aún no hay facturas registradas para los insumos de <span className="text-primary font-medium">{obraNombre}</span>.
+      </div>
+    )
+  }
+
+  const totalImpactoPrecio    = conCompras.reduce((s, i) => s + (i.impacto_precio    || 0), 0)
+  const totalImpactoCantidad  = conCompras.reduce((s, i) => s + (i.impacto_cantidad  || 0), 0)
+  const driverPrincipal       = Math.abs(totalImpactoPrecio) >= Math.abs(totalImpactoCantidad) ? 'precio' : 'cantidad'
+
+  return (
+    <>
+      {/* ── Banner: ¿Qué movió el costo de la obra? ── */}
+      <div className="card mb-4">
+        <div className="card-title mb-3">¿Por qué esta obra costó {totalImpactoPrecio + totalImpactoCantidad >= 0 ? 'más' : 'menos'} de lo presupuestado?</div>
+        <div className="grid grid-cols-3 gap-3">
+          <div className={`metric-card border-l-4 ${driverPrincipal === 'precio' ? 'border-l-red-500 bg-red-50/30' : 'border-l-gray-200'}`}>
+            <div className="metric-label">Impacto por PRECIO</div>
+            <div className={`metric-value ${totalImpactoPrecio >= 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+              {totalImpactoPrecio >= 0 ? '+' : ''}{fmt(totalImpactoPrecio)}
+            </div>
+            <div className="text-[11px] text-gray-500 mt-1">
+              Pagamos un precio {totalImpactoPrecio >= 0 ? 'mayor' : 'menor'} al de referencia.
+            </div>
+          </div>
+          <div className={`metric-card border-l-4 ${driverPrincipal === 'cantidad' ? 'border-l-amber-500 bg-amber-50/30' : 'border-l-gray-200'}`}>
+            <div className="metric-label">Impacto por CANTIDAD</div>
+            <div className={`metric-value ${totalImpactoCantidad >= 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+              {totalImpactoCantidad >= 0 ? '+' : ''}{fmt(totalImpactoCantidad)}
+            </div>
+            <div className="text-[11px] text-gray-500 mt-1">
+              Compramos {totalImpactoCantidad >= 0 ? 'más' : 'menos'} insumos que los presupuestados.
+            </div>
+          </div>
+          <div className="metric-card">
+            <div className="metric-label">Driver principal</div>
+            <div className="metric-value text-primary">
+              {driverPrincipal === 'precio' ? 'Precio' : 'Cantidad'}
+            </div>
+            <div className="text-[11px] text-gray-500 mt-1">
+              La mayor parte de la desviación viene del {driverPrincipal === 'precio' ? 'precio pagado' : 'volumen comprado'}.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4" style={{ gridTemplateColumns: '320px 1fr' }}>
+        {/* ── Lista de insumos ── */}
+        <div className="card" style={{ alignSelf: 'start' }}>
+          <div className="card-title text-sm">Insumos con compras ({conCompras.length})</div>
+          <input
+            type="text"
+            placeholder="Buscar por código o nombre…"
+            value={busqueda}
+            onChange={e => setBusqueda(e.target.value)}
+            className="w-full mb-2 px-2 py-1.5 text-sm border border-gray-200 rounded"
+          />
+          <div className="overflow-y-auto" style={{ maxHeight: 520 }}>
+            {filtrados.map(i => {
+              const isSel = i.catalogo_id === seleccionado
+              const variacion = i.variacion_pct || 0
+              return (
+                <button
+                  key={i.catalogo_id}
+                  onClick={() => setSeleccionado(i.catalogo_id)}
+                  className={`w-full text-left p-2 rounded border-b border-gray-100 transition ${isSel ? 'bg-blue-50 border-l-4 border-l-primary' : 'hover:bg-gray-50'}`}
+                >
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[10px] font-mono text-gray-400">{i.codigo}</div>
+                      <div className="text-xs font-medium text-gray-800 truncate">{i.nombre}</div>
+                    </div>
+                    <div className="text-right">
+                      <Sparkline data={i.sparkline} referencia={i.precio_referencia} width={70} height={22}
+                        stroke={variacion > 5 ? '#ef4444' : variacion < -5 ? '#10b981' : '#6b7280'} />
+                      <div className={`text-[10px] font-bold ${variacion > 0 ? 'text-red-600' : variacion < 0 ? 'text-emerald-600' : 'text-gray-400'}`}>
+                        {variacion > 0 ? '+' : ''}{variacion.toFixed(1)}%
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              )
+            })}
+            {filtrados.length === 0 && (
+              <div className="text-xs text-gray-400 text-center py-6">Sin resultados</div>
+            )}
+          </div>
+        </div>
+
+        {/* ── Detalle del insumo seleccionado ── */}
+        <div>
+          {lDet || !detalle ? (
+            <div className="card"><Loader /></div>
+          ) : (
+            <DetalleInsumoPrecio detalle={detalle} fmt={fmt} />
+          )}
+        </div>
+      </div>
+    </>
+  )
+}
+
+function DetalleInsumoPrecio({ detalle, fmt }) {
+  const { insumo, compras, proveedores, kpis } = detalle
+
+  // Color por proveedor (estable según índice)
+  const colorProv = {}
+  proveedores.forEach((p, idx) => { colorProv[p.proveedor] = PROVEEDOR_COLORS[idx % PROVEEDOR_COLORS.length] })
+
+  const chartData = compras.map(c => ({
+    fecha: c.fecha?.slice(0, 10),
+    precio: c.precio_unitario,
+    cantidad: c.cantidad,
+    proveedor: c.proveedor,
+    folio: c.folio
+  }))
+
+  // Series por proveedor para la gráfica de líneas multi-color
+  const seriesPorProveedor = proveedores.map(p => ({
+    proveedor: p.proveedor,
+    color: colorProv[p.proveedor],
+    puntos: chartData.filter(d => d.proveedor === p.proveedor)
+  }))
+
+  return (
+    <>
+      {/* ── KPIs ── */}
+      <div className="card mb-3">
+        <div className="flex items-baseline justify-between mb-2">
+          <div>
+            <div className="text-[11px] font-mono text-gray-400">{insumo.codigo}</div>
+            <div className="text-lg font-semibold text-gray-800">{insumo.nombre}</div>
+            <div className="text-xs text-gray-500">Unidad: {insumo.unidad} · Presupuesto: {insumo.cantidad_presupuestada} {insumo.unidad} a {fmt(insumo.precio_referencia)}</div>
+          </div>
+          <div className="text-right">
+            <div className="text-xs text-gray-500">Variación promedio vs ref.</div>
+            <div className={`text-2xl font-black ${kpis.variacion_vs_ref_pct > 0 ? 'text-red-600' : kpis.variacion_vs_ref_pct < 0 ? 'text-emerald-600' : 'text-gray-500'}`}>
+              {kpis.variacion_vs_ref_pct > 0 ? '+' : ''}{kpis.variacion_vs_ref_pct.toFixed(1)}%
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-4 gap-2 mt-3">
+          <Mini label="Mínimo"   value={fmt(kpis.precio_min)} />
+          <Mini label="Promedio" value={fmt(kpis.precio_prom)} highlight />
+          <Mini label="Máximo"   value={fmt(kpis.precio_max)} />
+          <Mini label="Último"   value={kpis.ultimo_precio != null ? fmt(kpis.ultimo_precio) : '—'}
+                hint={kpis.ultima_fecha ? kpis.ultima_fecha.slice(0,10) : ''} />
+        </div>
+
+        {/* Atribución del sobrecosto a este insumo */}
+        <div className="mt-3 grid grid-cols-3 gap-2 pt-3 border-t border-gray-100">
+          <div className="bg-red-50/40 px-2 py-1.5 rounded">
+            <div className="text-[10px] uppercase text-gray-500 font-semibold">Δ por precio</div>
+            <div className={`text-sm font-bold ${kpis.impacto_precio >= 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+              {kpis.impacto_precio >= 0 ? '+' : ''}{fmt(kpis.impacto_precio)}
+            </div>
+            <div className="text-[10px] text-gray-400">(precio_prom − ref) × cant_comprada</div>
+          </div>
+          <div className="bg-amber-50/40 px-2 py-1.5 rounded">
+            <div className="text-[10px] uppercase text-gray-500 font-semibold">Δ por cantidad</div>
+            <div className={`text-sm font-bold ${kpis.impacto_cantidad >= 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+              {kpis.impacto_cantidad >= 0 ? '+' : ''}{fmt(kpis.impacto_cantidad)}
+            </div>
+            <div className="text-[10px] text-gray-400">(cant_real − cant_pres) × precio_ref</div>
+          </div>
+          <div className="bg-gray-50 px-2 py-1.5 rounded">
+            <div className="text-[10px] uppercase text-gray-500 font-semibold">Sobrecosto total</div>
+            <div className={`text-sm font-bold ${kpis.sobrecosto_total >= 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+              {kpis.sobrecosto_total >= 0 ? '+' : ''}{fmt(kpis.sobrecosto_total)}
+            </div>
+            <div className="text-[10px] text-gray-400">costo_real − presupuesto</div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Gráfica de evolución ── */}
+      <div className="card mb-3">
+        <div className="card-title">Evolución del precio unitario</div>
+        <div className="text-[11px] text-gray-500 mb-3">
+          Línea por proveedor · Línea punteada = precio de referencia (${insumo.precio_referencia.toFixed(2)})
+        </div>
+        <div style={{ width: '100%', height: 280 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chartData} margin={{ top: 10, right: 30, bottom: 5, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+              <XAxis dataKey="fecha" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v}`} />
+              <Tooltip
+                contentStyle={{ fontSize: 12, borderRadius: 6 }}
+                formatter={(v, n, props) => {
+                  if (n === 'precio') return [`$${Number(v).toFixed(2)}`, 'Precio unit.']
+                  return [v, n]
+                }}
+                labelFormatter={(label) => `Fecha: ${label}`}
+              />
+              <ReferenceLine y={insumo.precio_referencia} stroke="#94a3b8" strokeDasharray="4 4"
+                label={{ value: 'Ref.', position: 'right', fontSize: 10, fill: '#64748b' }} />
+              {seriesPorProveedor.map(s => (
+                <Line
+                  key={s.proveedor}
+                  type="monotone"
+                  data={s.puntos}
+                  dataKey="precio"
+                  name={s.proveedor || '(sin proveedor)'}
+                  stroke={s.color}
+                  strokeWidth={2}
+                  dot={{ r: 4, fill: s.color }}
+                  activeDot={{ r: 6 }}
+                  connectNulls
+                  isAnimationActive={false}
+                />
+              ))}
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* ── Tabla por proveedor ── */}
+      {proveedores.length > 1 && (
+        <div className="card mb-3">
+          <div className="card-title">Comparativa por proveedor</div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left bg-gray-50 border-y border-gray-200">
+                  <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Proveedor</th>
+                  <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase text-right">Compras</th>
+                  <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase text-right">Cant. total</th>
+                  <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase text-right">Precio prom.</th>
+                  <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase text-right">Mín–Máx</th>
+                  <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase text-right">Costo total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {proveedores.map(p => (
+                  <tr key={p.proveedor} className="border-t border-gray-100">
+                    <td className="px-3 py-2">
+                      <span className="inline-block w-2 h-2 rounded-full mr-2" style={{ backgroundColor: colorProv[p.proveedor] }} />
+                      <span className="font-medium text-gray-700">{p.proveedor || '(sin proveedor)'}</span>
+                    </td>
+                    <td className="px-3 py-2 text-right">{p.num_compras}</td>
+                    <td className="px-3 py-2 text-right">{p.cant_total} {insumo.unidad}</td>
+                    <td className="px-3 py-2 text-right font-semibold">{fmt(p.precio_prom)}</td>
+                    <td className="px-3 py-2 text-right text-xs text-gray-500">{fmt(p.precio_min)} – {fmt(p.precio_max)}</td>
+                    <td className="px-3 py-2 text-right font-semibold">{fmt(p.costo_total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Tabla detallada de compras ── */}
+      <div className="card">
+        <div className="card-title">Detalle de compras ({compras.length})</div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left bg-gray-50 border-y border-gray-200">
+                <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Fecha</th>
+                <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Folio</th>
+                <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Proveedor</th>
+                <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase text-right">Cantidad</th>
+                <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase text-right">Precio unit.</th>
+                <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase text-right">vs Ref.</th>
+                <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase text-right">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {compras.map(c => {
+                const diffPct = insumo.precio_referencia > 0
+                  ? ((c.precio_unitario - insumo.precio_referencia) / insumo.precio_referencia) * 100
+                  : 0
+                return (
+                  <tr key={c.detalle_id} className="border-t border-gray-100 hover:bg-gray-50">
+                    <td className="px-3 py-2">{c.fecha?.slice(0, 10)}</td>
+                    <td className="px-3 py-2 font-mono text-xs text-gray-500">{c.folio}</td>
+                    <td className="px-3 py-2">
+                      <span className="inline-block w-2 h-2 rounded-full mr-2" style={{ backgroundColor: colorProv[c.proveedor] }} />
+                      {c.proveedor}
+                    </td>
+                    <td className="px-3 py-2 text-right">{c.cantidad} {insumo.unidad}</td>
+                    <td className="px-3 py-2 text-right font-semibold">{fmt(c.precio_unitario)}</td>
+                    <td className={`px-3 py-2 text-right text-xs font-bold ${diffPct > 0 ? 'text-red-600' : diffPct < 0 ? 'text-emerald-600' : 'text-gray-400'}`}>
+                      {diffPct > 0 ? '+' : ''}{diffPct.toFixed(1)}%
+                    </td>
+                    <td className="px-3 py-2 text-right">{fmt(c.subtotal)}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
+  )
+}
+
+function Mini({ label, value, hint, highlight }) {
+  return (
+    <div className={`px-2 py-1.5 rounded ${highlight ? 'bg-blue-50' : 'bg-gray-50'}`}>
+      <div className="text-[10px] uppercase text-gray-500 font-semibold">{label}</div>
+      <div className={`text-sm font-bold ${highlight ? 'text-primary' : 'text-gray-800'}`}>{value}</div>
+      {hint && <div className="text-[10px] text-gray-400">{hint}</div>}
+    </div>
   )
 }

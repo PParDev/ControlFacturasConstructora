@@ -3,6 +3,7 @@ import { Badge } from '../components/Badge'
 import { Loader } from '../components/Loader'
 import { fmt } from '../lib/utils'
 import { importarCatalogo, getObras, createObra, updateObra, deleteObra } from '../lib/api'
+import { toast } from '../lib/toast'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 
@@ -91,7 +92,7 @@ export default function Obras() {
       queryClient.invalidateQueries({ queryKey: ['catalogo_obras'] })
     },
     onError: (err) => {
-      alert(err.message)
+      toast.error(err.message)
       setUploadingId(null)
     }
   })
