@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getPedidos, getRecepciones, getFacturas, getObras } from '../lib/api'
 import { useNavigate } from 'react-router-dom'
@@ -12,8 +13,15 @@ export default function CentroCompras() {
   const { data: recepciones = [], isLoading: lRec } = useQuery({ queryKey: ['recepciones'], queryFn: getRecepciones })
   const { data: facturas = [], isLoading: lFac } = useQuery({ queryKey: ['facturas'], queryFn: getFacturas })
   const { data: obras = [], isLoading: lObr } = useQuery({ queryKey: ['obras'], queryFn: getObras })
+  const { data: recPendientes = [], isLoading: lRP } = useQuery({ 
+    queryKey: ['recepciones_pendientes'], 
+    queryFn: async () => {
+      const res = await fetch('/api/recepciones/pendientes')
+      return res.json()
+    } 
+  })
 
-  if (lPed || lRec || lFac || lObr) {
+  if (lPed || lRec || lFac || lObr || lRP) {
     return <div><div className="page-title">Centro de Suministros</div><Loader /></div>
   }
 
@@ -25,11 +33,9 @@ export default function CentroCompras() {
     return acc
   }, {})
 
-  // 2. Recepciones sin facturar 
-  // OJO: En la BD actual de facturas tenemos "recepcion_id". Así que filtramos las recepciones cuyo ID no aparece en las facturas.
-  const recepcionesSinFactura = recepciones.filter(r => 
-    !facturas.some(f => f.recepcion_id === r.id)
-  )
+  // 2. Recepciones sin facturar (Ahora vienen agrupadas del backend)
+
+  // Para compatibilidad y simplicidad, usaremos recPendientes directamente en la columna 2
 
   // 3. Facturas pendientes de pago
   const facturasPendientes = facturas.filter(f => f.status === 'Pendiente')
@@ -94,12 +100,12 @@ export default function CentroCompras() {
           <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-200">
             <div className="p-1.5 bg-orange-100 text-orange-600 rounded"><Box size={18} /></div>
             <h3 className="font-bold text-gray-800">Pendiente de Facturar</h3>
-            <span className="ml-auto bg-gray-200 text-gray-700 text-xs font-bold px-2 py-0.5 rounded-full">{recepcionesSinFactura.length}</span>
+            <span className="ml-auto bg-gray-200 text-gray-700 text-xs font-bold px-2 py-0.5 rounded-full">{recPendientes.length}</span>
           </div>
 
           <div className="flex-1 space-y-3">
-            {recepcionesSinFactura.map(rec => (
-              <div key={rec.id} className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+            {recPendientes.map(rec => (
+              <div key={rec.folio} className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
                 <div className="flex justify-between items-start mb-1">
                   <div className="font-bold text-sm text-gray-800">{rec.folio}</div>
                   <div className="text-[10px] bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-medium">Recibido</div>
@@ -107,17 +113,21 @@ export default function CentroCompras() {
                 <div className="text-xs text-gray-500 mb-2">
                   <span className="font-semibold text-gray-700">{rec.proveedor}</span> • {getObraNombre(rec.obra_id)}
                   <br />
-                  Entregó: {rec.producto} ({rec.cantidad_recibida})
+                  <span className="text-gray-400">
+                    {rec.total_items === 1 
+                      ? `Insumo: ${rec.resumen_productos}` 
+                      : `${rec.total_items} insumos recibidos`}
+                  </span>
                 </div>
                 <button 
-                  onClick={() => navigate('/facturas', { state: { recepcion_id: rec.id } })}
+                  onClick={() => navigate('/facturas', { state: { folio: rec.folio } })}
                   className="w-full mt-1 bg-gray-50 hover:bg-orange-50 text-orange-600 border border-gray-200 hover:border-orange-300 text-xs py-1.5 rounded font-semibold flex items-center justify-center gap-1 transition-colors"
                 >
                   Capturar Factura <ArrowRight size={14} />
                 </button>
               </div>
             ))}
-            {recepcionesSinFactura.length === 0 && (
+            {recPendientes.length === 0 && (
               <div className="text-center py-6 text-sm text-gray-400 border-2 border-dashed border-gray-200 rounded-lg">
                 Todo el material recibido ha sido facturado.
               </div>

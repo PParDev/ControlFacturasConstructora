@@ -43,10 +43,11 @@ export const getFacturasPendientesInfo = () => {
 
 export const getRecibidoVsFacturado = () => {
   return db.prepare(`
-    SELECT r.id, r.folio, r.obra_id, o.nombre as obra_nombre,
-           r.proveedor, r.producto, r.cantidad_recibida, r.fecha,
+    SELECT r.folio, rd.id, r.obra_id, o.nombre as obra_nombre,
+           r.proveedor, rd.producto, rd.cantidad_recibida, r.fecha,
            f.folio as factura_folio, f.monto as monto_facturado, f.status as estado_factura
-    FROM recepciones r
+    FROM recepcion_detalles rd
+    JOIN recepciones r ON r.id = rd.recepcion_id
     LEFT JOIN obras o ON o.id = r.obra_id
     LEFT JOIN facturas f ON f.recepcion_id = r.id
     ORDER BY r.fecha DESC

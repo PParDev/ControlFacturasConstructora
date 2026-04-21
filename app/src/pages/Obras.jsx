@@ -37,10 +37,19 @@ export default function Obras() {
     }
   })
 
-  const mutUpdate = useMutation({
+const mutUpdate = useMutation({
     mutationFn: (d) => updateObra(d.id, d),
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['obras'] })
+      // Auto-upload catalog si se seleccionó un archivo en edición
+      if (catalogoFile) {
+        const fd = new FormData()
+        fd.append('excel', catalogoFile)
+        fd.append('obra_id', variables.id)
+        setUploadingId(variables.id)
+        mutUpload.mutate(fd)
+        setCatalogoFile(null)
+      }
       setForm(EMPTY)
       setShow(false)
       setIsEditing(false)
@@ -77,7 +86,6 @@ export default function Obras() {
     }
   }
 
-  const fileInputRef = React.useRef(null)
   const createFileRef = React.useRef(null)
   const [uploadingId, setUploadingId] = useState(null)
   const [guiaOpen, setGuiaOpen] = useState(false)
@@ -97,20 +105,7 @@ export default function Obras() {
     }
   })
 
-  const triggerUpload = (id) => {
-    setUploadingId(id)
-    if (fileInputRef.current) fileInputRef.current.click()
-  }
 
-  const handleFileChange = (e) => {
-    const file = e.target.files[0]
-    if (!file || !uploadingId) return
-    const fd = new FormData()
-    fd.append('excel', file)
-    fd.append('obra_id', uploadingId)
-    mutUpload.mutate(fd)
-    e.target.value = ''
-  }
 
   return (
     <div>
@@ -177,7 +172,7 @@ export default function Obras() {
         </button>
       </div>
       {uploadResult && !show && <div className="alert alert-success mb-4">{uploadResult}</div>}
-      <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept=".xlsx, .xls, .csv" onChange={handleFileChange} />
+
 
       {show && (
         <div className="card">
@@ -214,8 +209,7 @@ export default function Obras() {
             </div>
           </div>
 
-          {/* Catálogo Excel — solo al crear */}
-          {!isEditing && (
+          {/* Catálogo Excel — solo al crear */}    
             <div className="mt-3 p-3 border border-dashed border-gray-300 rounded-lg bg-gray-50">
               <div className="text-sm font-medium text-gray-700 mb-1">
                 Catálogo de insumos — <span className="text-gray-400 font-normal">opcional</span>
@@ -249,13 +243,16 @@ export default function Obras() {
                 </button>
               </div>
             </div>
-          )}
 
           {uploadResult && <div className="alert alert-success mt-3">{uploadResult}</div>}
 
           <div className="flex gap-2 mt-3">
             <button className="btn btn-primary" onClick={save} disabled={mutCreate.isPending || mutUpdate.isPending}>
-              {(mutCreate.isPending || mutUpdate.isPending) ? 'Guardando...' : (isEditing ? 'Guardar cambios' : catalogoFile ? 'Guardar y cargar catálogo' : 'Guardar obra')}
+              {(mutCreate.isPending || mutUpdate.isPending) ? 'Guardando...' : 
+                (isEditing 
+                  ? (catalogoFile ? 'Guardar y actualizar catálogo' : 'Guardar cambios') 
+                  : (catalogoFile ? 'Guardar y cargar catálogo' : 'Guardar obra')
+                )}
             </button>
             <button className="btn" onClick={() => { setShow(false); setCatalogoFile(null); setUploadResult(null) }}>Cancelar</button>
           </div>
@@ -317,21 +314,6 @@ export default function Obras() {
                               onClick={() => handleEdit(o)}
                             >
                               Editar
-                            </button>
-                            <button
-                              className="text-xs bg-green-50 text-green-600 hover:bg-green-100 px-2 py-1 rounded"
-                              onClick={() => triggerUpload(o.id)}
-                              disabled={uploadingId === o.id || mutUpload.isPending}
-                              title="Importar catálogo (Excel)"
-                            >
-                              {uploadingId === o.id && mutUpload.isPending ? 'Cargando...' : '↑ Excel'}
-                            </button>
-                            <button
-                              className="text-xs bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-700 px-2 py-1 rounded"
-                              onClick={() => setGuiaOpen(true)}
-                              title="Ver formato requerido del Excel"
-                            >
-                              ?
                             </button>
                             {o.status !== 'Archivada' && (
                               <button

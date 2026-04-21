@@ -83,20 +83,13 @@ export default function Facturas() {
     enabled: !!selectedObra
   })
 
-  // Agrupar las recepciones por su folio
+  // Las recepciones pendientes ya vienen agrupadas del backend (cabecera + items)
   const gruposRecepcion = useMemo(() => {
-    return recPendientes.reduce((acc, r) => {
-      if (!acc[r.folio]) {
-        acc[r.folio] = { 
-          folio: r.folio, 
-          obra_id: r.obra_id, 
-          proveedor: r.proveedor, 
-          items: [] 
-        }
-      }
-      acc[r.folio].items.push(r)
-      return acc
-    }, {})
+    const obj = {}
+    recPendientes.forEach(r => {
+      obj[r.folio] = r
+    })
+    return obj
   }, [recPendientes])
 
   const foliosUnicos = Object.keys(gruposRecepcion).sort()
@@ -108,13 +101,20 @@ export default function Facturas() {
     setVinculosCorregidos({}) // Resetear vínculos manuales de la UI
   }
 
-  // Auto-cargar si venimos desde pipeline o al inicio
+  // Auto-cargar si venimos desde tablero o al inicio
   useEffect(() => {
     if (obras.length > 0 && !selectedObra) setSelectedObra(obras[0].id)
-    if (foliosUnicos.length > 0 && !folioSeleccionado) {
+    
+    // Si viene un folio por navegación (ej. desde el tablero)
+    if (location.state?.folio && foliosUnicos.includes(location.state.folio)) {
+      handleFolioSelect(location.state.folio)
+      // Limpiar el estado para que no se re-seleccione al refrescar
+      window.history.replaceState({}, document.title)
+    } 
+    else if (foliosUnicos.length > 0 && !folioSeleccionado) {
       handleFolioSelect(foliosUnicos[0])
     }
-  }, [obras, foliosUnicos])
+  }, [obras, foliosUnicos, location.state])
 
   const handleFolioSelect = (folioOrId) => {
     const f = folioOrId; // Es el string REC-XXX

@@ -432,12 +432,16 @@ export default function Recepcion() {
                   <td className="font-medium text-gray-700">{r.folio}</td>
                   <td>{r.fecha}</td>
                   <td>{obras.find(o => o.id === r.obra_id)?.nombre || `Obra #${r.obra_id}`}</td>
-                  <td>{r.producto}</td>
-                  <td className="font-semibold text-gray-700">{r.cantidad_recibida}</td>
+                  <td className="max-w-xs truncate" title={r.resumen_productos}>
+                    {r.resumen_productos || 'Sin detalles'}
+                  </td>
+                  <td className="font-semibold text-gray-700">
+                    {r.total_items} {r.total_items === 1 ? 'insumo' : 'insumos'}
+                  </td>
                   <td>{r.proveedor}</td>
                   <td>
-                    {r.catalogo_obra_id
-                      ? <span className="text-[10px] px-1.5 py-0.5 bg-green-50 text-green-700 rounded font-medium">Vinculado</span>
+                    {r.total_items > 0
+                      ? <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded font-medium">Recibido</span>
                       : <span className="text-[10px] text-gray-300">—</span>}
                   </td>
                 </tr>

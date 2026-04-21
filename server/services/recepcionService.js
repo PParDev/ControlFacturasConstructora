@@ -10,12 +10,11 @@ function siguienteFolio() {
 
 export const getRecepciones = (obra_id) => {
   let sql = `
-    SELECT r.*, o.nombre as obra_nombre, p.folio as pedido_folio,
-           co.nombre as catalogo_nombre, co.codigo as catalogo_codigo
+    SELECT r.*, o.nombre as obra_nombre,
+           (SELECT COUNT(*) FROM recepcion_detalles WHERE recepcion_id = r.id) as total_items,
+           (SELECT GROUP_CONCAT(producto, ', ') FROM recepcion_detalles WHERE recepcion_id = r.id) as resumen_productos
     FROM recepciones r
     LEFT JOIN obras o ON o.id = r.obra_id
-    LEFT JOIN pedidos p ON p.id = r.pedido_id
-    LEFT JOIN catalogo_obras co ON co.id = r.catalogo_obra_id
     WHERE 1=1
   `
   const params = []
@@ -25,161 +24,125 @@ export const getRecepciones = (obra_id) => {
 }
 
 export const getRecepcionById = (id) => {
-  return db.prepare(`
-    SELECT r.*, o.nombre as obra_nombre, p.folio as pedido_folio,
-           co.nombre as catalogo_nombre, co.codigo as catalogo_codigo,
-           co.precio_referencia as precio_estimado, co.unidad as catalogo_unidad
+  const header = db.prepare(`
+    SELECT r.*, o.nombre as obra_nombre
     FROM recepciones r
     LEFT JOIN obras o ON o.id = r.obra_id
-    LEFT JOIN pedidos p ON p.id = r.pedido_id
-    LEFT JOIN catalogo_obras co ON co.id = r.catalogo_obra_id
     WHERE r.id = ?
   `).get(id)
+
+  if (!header) return null
+
+  const detalles = db.prepare(`
+    SELECT rd.*, p.folio as pedido_folio,
+           co.nombre as catalogo_nombre, co.codigo as catalogo_codigo,
+           co.precio_referencia as precio_estimado, co.unidad as catalogo_unidad
+    FROM recepcion_detalles rd
+    LEFT JOIN pedidos p ON p.id = rd.pedido_id
+    LEFT JOIN catalogo_obras co ON co.id = rd.catalogo_obra_id
+    WHERE rd.recepcion_id = ?
+  `).all(id)
+
+  return { ...header, items: detalles }
 }
 
 export const getRecepcionesPendientes = () => {
-  return db.prepare(`
+  const headers = db.prepare(`
     SELECT r.*, o.nombre as obra_nombre,
-           co.nombre as catalogo_nombre, co.codigo as catalogo_codigo
+           (SELECT COUNT(*) FROM recepcion_detalles WHERE recepcion_id = r.id) as total_items,
+           (SELECT GROUP_CONCAT(producto, ', ') FROM recepcion_detalles WHERE recepcion_id = r.id) as resumen_productos
     FROM recepciones r
     LEFT JOIN obras o ON o.id = r.obra_id
-    LEFT JOIN catalogo_obras co ON co.id = r.catalogo_obra_id
-    WHERE r.folio NOT IN (
-      SELECT r2.folio FROM facturas f 
-      JOIN recepciones r2 ON f.recepcion_id = r2.id 
-      WHERE f.recepcion_id IS NOT NULL
+    WHERE r.id NOT IN (
+      SELECT recepcion_id FROM facturas WHERE recepcion_id IS NOT NULL
     )
     ORDER BY r.fecha DESC
   `).all()
+
+  return headers.map(h => {
+    const items = db.prepare(`
+      SELECT rd.*, co.precio_referencia as precio_estimado
+      FROM recepcion_detalles rd
+      LEFT JOIN catalogo_obras co ON co.id = rd.catalogo_obra_id
+      WHERE rd.recepcion_id = ?
+    `).all(h.id)
+    return { ...h, items }
+  })
 }
 
 export const createRecepcion = (datos) => {
-  return db.transaction(() => {
-    let cantidad_pedida  = 0
-    let faltante         = 0
-    let catalogo_obra_id = datos.catalogo_obra_id || null
-
-    if (datos.pedido_id) {
-      const pedido = db.prepare(`
-        SELECT p.*, co.precio_referencia
-        FROM pedidos p
-        LEFT JOIN catalogo_obras co ON co.id = p.catalogo_obra_id
-        WHERE p.id = ?
-      `).get(datos.pedido_id)
-
-      if (!pedido) throw new Error('Pedido no encontrado')
-
-      cantidad_pedida = pedido.cantidad
-      faltante        = Math.max(0, cantidad_pedida - datos.cantidad_recibida)
-
-      // Heredar catalogo_obra_id del pedido si no viene explícito en los datos
-      if (!catalogo_obra_id && pedido.catalogo_obra_id) {
-        catalogo_obra_id = pedido.catalogo_obra_id
-      }
-
-      const nuevoStatus = faltante > 0 ? 'Parcial' : 'Recibido'
-      db.prepare('UPDATE pedidos SET status = ? WHERE id = ?').run(nuevoStatus, datos.pedido_id)
-    }
-
-    // El folio se genera dentro de la transacción para evitar duplicados
-    const folio      = siguienteFolio()
-    const fechaFinal = datos.fecha || new Date().toISOString().split('T')[0]
-
-    // Si hay catalogo_obra_id pero no producto, tomar nombre del catálogo
-    let producto = datos.producto || ''
-    if (catalogo_obra_id && !producto) {
-      const cat = db.prepare('SELECT nombre FROM catalogo_obras WHERE id = ?').get(catalogo_obra_id)
-      if (cat) producto = cat.nombre
-    }
-
-    const info = db.prepare(`
-      INSERT INTO recepciones
-        (folio, obra_id, pedido_id, tipo_flujo, proveedor, producto,
-         cantidad_pedida, cantidad_recibida, faltante, entrego, recibio, fecha, catalogo_obra_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      folio, datos.obra_id, datos.pedido_id || null,
-      datos.tipo_flujo || 'sin_pedido',
-      datos.proveedor  || '', producto,
-      cantidad_pedida, datos.cantidad_recibida, faltante,
-      datos.entrego    || '', datos.recibio || '',
-      fechaFinal, catalogo_obra_id
-    )
-
-    return db.prepare(`
-      SELECT r.*, co.nombre as catalogo_nombre, co.precio_referencia as precio_estimado
-      FROM recepciones r
-      LEFT JOIN catalogo_obras co ON co.id = r.catalogo_obra_id
-      WHERE r.id = ?
-    `).get(info.lastInsertRowid)
-  })()
+  // Convertimos un single en un bulk de 1 para reutilizar lógica
+  return createRecepcionBulk([datos])
 }
 
-export const createRecepcionBulk = (listaDatos) => {
-  if (listaDatos.length === 0) return []
+export const createRecepcionBulk = (listaItems) => {
+  if (listaItems.length === 0) return null
 
   return db.transaction(() => {
-    // Generar un solo folio para todos los elementos recibidos juntos
-    const folio      = siguienteFolio()
-    const fechaFinal = listaDatos[0]?.fecha || new Date().toISOString().split('T')[0]
-    const ids = []
+    const first = listaItems[0]
+    const folio = siguienteFolio()
+    const fecha = first.fecha || new Date().toISOString().split('T')[0]
 
-    for (const datos of listaDatos) {
-      let cantidad_pedida  = 0
-      let faltante         = 0
-      let catalogo_obra_id = datos.catalogo_obra_id || null
+    // 1. Crear cabecera
+    const infoHeader = db.prepare(`
+      INSERT INTO recepciones (folio, obra_id, tipo_flujo, proveedor, entrego, recibio, fecha)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      folio,
+      first.obra_id,
+      first.tipo_flujo || 'sin_pedido',
+      first.proveedor || '',
+      first.entrego || '',
+      first.recibio || '',
+      fecha
+    )
 
-      if (datos.pedido_id) {
+    const recepcionId = infoHeader.lastInsertRowid
+
+    // 2. Crear detalles
+    const stmtDetalle = db.prepare(`
+      INSERT INTO recepcion_detalles (recepcion_id, pedido_id, producto, cantidad_pedida, cantidad_recibida, faltante, catalogo_obra_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `)
+
+    for (const item of listaItems) {
+      let cantidad_pedida = 0
+      let faltante = 0
+      let catalogo_obra_id = item.catalogo_obra_id || null
+
+      if (item.pedido_id) {
         const pedido = db.prepare(`
-          SELECT p.*, co.precio_referencia
-          FROM pedidos p
-          LEFT JOIN catalogo_obras co ON co.id = p.catalogo_obra_id
-          WHERE p.id = ?
-        `).get(datos.pedido_id)
+          SELECT p.* FROM pedidos p WHERE p.id = ?
+        `).get(item.pedido_id)
 
-        if (!pedido) throw new Error(`Pedido ID ${datos.pedido_id} no encontrado`)
+        if (pedido) {
+          cantidad_pedida = pedido.cantidad
+          faltante = Math.max(0, cantidad_pedida - item.cantidad_recibida)
+          if (!catalogo_obra_id) catalogo_obra_id = pedido.catalogo_obra_id
 
-        cantidad_pedida = pedido.cantidad
-        faltante        = Math.max(0, cantidad_pedida - datos.cantidad_recibida)
-
-        // Heredar catalogo_obra_id del pedido si no viene explícito
-        if (!catalogo_obra_id && pedido.catalogo_obra_id) {
-          catalogo_obra_id = pedido.catalogo_obra_id
+          // Actualizar status del pedido
+          const nuevoStatus = faltante > 0 ? 'Parcial' : 'Recibido'
+          db.prepare('UPDATE pedidos SET status = ? WHERE id = ?').run(nuevoStatus, item.pedido_id)
         }
-
-        const nuevoStatus = faltante > 0 ? 'Parcial' : 'Recibido'
-        db.prepare('UPDATE pedidos SET status = ? WHERE id = ?').run(nuevoStatus, datos.pedido_id)
       }
 
-      // Si hay catalogo_obra_id pero no producto, tomar nombre del catálogo
-      let producto = datos.producto || ''
+      let producto = item.producto || ''
       if (catalogo_obra_id && !producto) {
         const cat = db.prepare('SELECT nombre FROM catalogo_obras WHERE id = ?').get(catalogo_obra_id)
         if (cat) producto = cat.nombre
       }
 
-      const info = db.prepare(`
-        INSERT INTO recepciones
-          (folio, obra_id, pedido_id, tipo_flujo, proveedor, producto,
-           cantidad_pedida, cantidad_recibida, faltante, entrego, recibio, fecha, catalogo_obra_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        folio, datos.obra_id, datos.pedido_id || null,
-        datos.tipo_flujo || 'sin_pedido',
-        datos.proveedor  || '', producto,
-        cantidad_pedida, datos.cantidad_recibida, faltante,
-        datos.entrego    || '', datos.recibio || '',
-        datos.fecha || fechaFinal, catalogo_obra_id
+      stmtDetalle.run(
+        recepcionId,
+        item.pedido_id || null,
+        producto,
+        cantidad_pedida,
+        item.cantidad_recibida,
+        faltante,
+        catalogo_obra_id
       )
-      ids.push(info.lastInsertRowid)
     }
 
-    const placeholders = ids.map(() => '?').join(',')
-    return db.prepare(`
-      SELECT r.*, co.nombre as catalogo_nombre, co.precio_referencia as precio_estimado
-      FROM recepciones r
-      LEFT JOIN catalogo_obras co ON co.id = r.catalogo_obra_id
-      WHERE r.id IN (${placeholders})
-    `).all(...ids)
+    return getRecepcionById(recepcionId)
   })()
 }
